@@ -26,11 +26,22 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
   String? _selectedRelationship;
   String? _selectedGender;
   bool _isAddingMember = false;
+  bool _isDeletingMember = false;
+  bool _isEditingMember = false;
+  
+  // Edit mode variables
+  Dependent? _editingMember;
+  
+  // Relationships from API
+  List<Map<String, dynamic>> _relationships = [];
+  bool _isLoadingRelationships = false;
+  String? _relationshipsError;
 
   @override
   void initState() {
     super.initState();
     _loadFamilyMembers();
+    _loadRelationships();
   }
 
   @override
@@ -73,6 +84,40 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
     }
   }
 
+  Future<void> _loadRelationships() async {
+    setState(() {
+      _isLoadingRelationships = true;
+      _relationshipsError = null;
+    });
+
+    try {
+      final result = await _apiService.getRelationships(context);
+      print('👥 Relationships API Response: $result');
+      if (result['success']) {
+        final List<dynamic> data = result['data']['data'] ?? [];
+        setState(() {
+          _relationships = data.map((json) => {
+            'id': json['id'],
+            'name': json['name'],
+          }).toList();
+          _isLoadingRelationships = false;
+        });
+        print('👥 Loaded ${_relationships.length} relationships from API');
+      } else {
+        setState(() {
+          _relationshipsError = result['message'] ?? 'Failed to load relationships';
+          _isLoadingRelationships = false;
+        });
+      }
+    } catch (e) {
+      print('❌ Error loading relationships: $e');
+      setState(() {
+        _relationshipsError = 'Network error occurred';
+        _isLoadingRelationships = false;
+      });
+    }
+  }
+
   Future<void> _selectDate() async {
     final DateTime? picked = await showDatePicker(
       context: context,
@@ -88,8 +133,11 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
   }
 
   Future<void> _addFamilyMember() async {
+    print('🔄 _addFamilyMember called');
+    
     // Validate form
     if (_firstNameController.text.trim().isEmpty) {
+      print('❌ Validation failed: First name is empty');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter first name')),
       );
@@ -104,6 +152,7 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
     }
 
     if (_selectedRelationship == null) {
+      print('❌ Validation failed: Relationship is not selected');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please select relationship')),
       );
@@ -135,36 +184,157 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
       _isAddingMember = true;
     });
 
+    // Show loading overlay
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return WillPopScope(
+          onWillPop: () async => false,
+          child: Dialog(
+            backgroundColor: Colors.transparent,
+            child: Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircularProgressIndicator(
+                    color: AppColors.primaryBlue,
+                    strokeWidth: 3,
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    _isEditingMember ? 'Updating Family Member...' : 'Adding Family Member...',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _isEditingMember 
+                        ? 'Please wait while we update the information'
+                        : 'Please wait while we save the information',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[600],
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
     try {
+      print('🔄 Starting API call...');
+      print('🔄 Form data:');
+      print('  - First Name: ${_firstNameController.text.trim()}');
+      print('  - Last Name: ${_lastNameController.text.trim()}');
+      print('  - Relationship: $_selectedRelationship');
+      print('  - Contact: ${_contactNumberController.text.trim()}');
+      print('  - DOB: ${_dateOfBirthController.text.trim()}');
+      print('  - Gender: $_selectedGender');
+      print('  - Email: ${_emailController.text.trim()}');
+      
       // Map relationship name to ID (you may need to adjust this based on your API)
       final relationshipId = _getRelationshipId(_selectedRelationship!);
-      
-      final result = await _apiService.addDependent(
-        firstName: _firstNameController.text.trim(),
-        lastName: _lastNameController.text.trim(),
-        relationshipId: relationshipId,
-        contactNumber: _contactNumberController.text.trim(),
-        dateOfBirth: _dateOfBirthController.text.trim(),
-        gender: _selectedGender!,
-        email: _emailController.text.trim().isNotEmpty ? _emailController.text.trim() : null,
-        context: context,
-      );
-
-      if (result['status'] == 'success') {
-        Navigator.of(context).pop(); // Close bottom sheet
-        _clearForm();
-        _loadFamilyMembers(); // Refresh the list
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Family member added successfully!')),
+      print('🔄 Relationship ID123: $relationshipId');
+     
+      if (_isEditingMember && _editingMember != null) {
+        print('🔄 Edit mode - calling update API...');
+        final result = await _apiService.updateDependent(
+          dependentId: _editingMember!.id,
+          firstName: _firstNameController.text.trim(),
+          lastName: _lastNameController.text.trim(),
+          relationshipId: relationshipId,
+          contactNumber: _contactNumberController.text.trim(),
+          dateOfBirth: _dateOfBirthController.text.trim(),
+          gender: _selectedGender!,
+          email: _emailController.text.trim().isNotEmpty ? _emailController.text.trim() : null,
+          context: context,
         );
+        print('✏️ Update Dependent API Response: $result');
+        
+        // Hide loading overlay
+        Navigator.of(context).pop();
+        
+        if (result['success'] == true) {
+          Navigator.of(context).pop(); // Close bottom sheet
+          _clearForm();
+          _loadFamilyMembers(); // Refresh the list
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result['message'] ?? 'Family member updated successfully!'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result['message'] ?? 'Failed to update family member'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
+        return;
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(result['message'] ?? 'Failed to add family member')),
+        print('🔄 Add mode - calling addDependent API...');
+        final result = await _apiService.addDependent(
+          firstName: _firstNameController.text.trim(),
+          lastName: _lastNameController.text.trim(),
+          relationshipId: relationshipId,
+          contactNumber: _contactNumberController.text.trim(),
+          dateOfBirth: _dateOfBirthController.text.trim(),
+          gender: _selectedGender!,
+          email: _emailController.text.trim().isNotEmpty ? _emailController.text.trim() : null,
+          context: context,
         );
+        print('👥 Add Dependent API Response: $result');
+        
+        // Hide loading overlay
+        Navigator.of(context).pop();
+        
+        if (result['success'] == true) {
+          Navigator.of(context).pop(); // Close bottom sheet
+          _clearForm();
+          _loadFamilyMembers(); // Refresh the list
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result['message'] ?? 'Family member added successfully!'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result['message'] ?? 'Failed to add family member'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
       }
     } catch (e) {
+      print('❌ Error in _addFamilyMember: $e');
+      // Hide loading overlay
+      Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Network error occurred')),
+        const SnackBar(
+          content: Text('Network error occurred. Please try again.'),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 4),
+        ),
       );
     } finally {
       setState(() {
@@ -173,28 +343,17 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
     }
   }
 
-  int _getRelationshipId(String relationship) {
-    // Map relationship names to IDs - adjust based on your API
-    switch (relationship.toLowerCase()) {
-      case 'wife':
-        return 1;
-      case 'husband':
-        return 2;
-      case 'son':
-        return 3;
-      case 'daughter':
-        return 4;
-      case 'father':
-        return 5;
-      case 'mother':
-        return 6;
-      case 'brother':
-        return 7;
-      case 'sister':
-        return 8;
-      default:
-        return 9; // Other
-    }
+  int _getRelationshipId(String relationshipName) {
+    print('🔄 _getRelationshipId called with: $relationshipName');
+    print('🔄 Available relationships: $_relationships');
+    
+    // Find the relationship by name in the API data
+    final relationship = _relationships.firstWhere(
+      (rel) => rel['name'] == relationshipName,
+      orElse: () => {'id': 1, 'name': 'Other'}, // Default fallback
+    );
+    print('🔄 Found relationship: $relationship');
+    return int.tryParse(relationship['id'].toString()) ?? 1;
   }
 
   void _clearForm() {
@@ -207,7 +366,37 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
     _selectedGender = null;
   }
 
+  void _showEditMemberDialog(Dependent member) {
+    // Set edit mode and populate form with existing data
+    setState(() {
+      _isEditingMember = true;
+      _editingMember = member;
+    });
+    
+    // Populate form fields with existing data
+    _firstNameController.text = member.firstName;
+    _lastNameController.text = member.lastName;
+    _contactNumberController.text = member.contactNumber;
+    _emailController.text = member.email;
+    _dateOfBirthController.text = member.dateOfBirth;
+    _selectedRelationship = member.relationship.name;
+    _selectedGender = member.gender;
+    
+    _showMemberFormDialog('Edit Family Member');
+  }
+
   void _showAddMemberDialog() {
+    // Reset form for add mode
+    setState(() {
+      _isEditingMember = false;
+      _editingMember = null;
+    });
+    
+    _clearForm();
+    _showMemberFormDialog('Add Family Member');
+  }
+
+  void _showMemberFormDialog(String title) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -240,9 +429,9 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
-                      'Add Family Member',
-                      style: TextStyle(
+                    Text(
+                      title,
+                      style: const TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
                       ),
@@ -310,7 +499,16 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
                         value: _selectedRelationship,
                         decoration: InputDecoration(
                           labelText: 'Relationship',
-                          prefixIcon: const Icon(Icons.family_restroom, color: AppColors.primaryBlue),
+                          prefixIcon: _isLoadingRelationships
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: AppColors.primaryBlue,
+                                  ),
+                                )
+                              : const Icon(Icons.family_restroom, color: AppColors.primaryBlue),
                           filled: true,
                           fillColor: Colors.white,
                           border: OutlineInputBorder(
@@ -327,18 +525,40 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
                           ),
                           contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
                         ),
-                        items: const [
-                          DropdownMenuItem(value: 'Wife', child: Text('Wife')),
-                          DropdownMenuItem(value: 'Husband', child: Text('Husband')),
-                          DropdownMenuItem(value: 'Son', child: Text('Son')),
-                          DropdownMenuItem(value: 'Daughter', child: Text('Daughter')),
-                          DropdownMenuItem(value: 'Father', child: Text('Father')),
-                          DropdownMenuItem(value: 'Mother', child: Text('Mother')),
-                          DropdownMenuItem(value: 'Brother', child: Text('Brother')),
-                          DropdownMenuItem(value: 'Sister', child: Text('Sister')),
-                          DropdownMenuItem(value: 'Other', child: Text('Other')),
-                        ],
-                        onChanged: (value) {
+                        items: _isLoadingRelationships
+                            ? [
+                                const DropdownMenuItem<String>(
+                                  value: null,
+                                  child: Row(
+                                    children: [
+                                      SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: AppColors.primaryBlue,
+                                        ),
+                                      ),
+                                      SizedBox(width: 8),
+                                      Text('Loading relationships...'),
+                                    ],
+                                  ),
+                                ),
+                              ]
+                            : _relationships.isEmpty
+                                ? [
+                                    const DropdownMenuItem<String>(
+                                      value: null,
+                                      child: Text('No relationships available'),
+                                    ),
+                                  ]
+                                : _relationships.map((relationship) {
+                                    return DropdownMenuItem<String>(
+                                      value: relationship['name'] as String,
+                                      child: Text(relationship['name'] as String),
+                                    );
+                                  }).toList(),
+                        onChanged: _isLoadingRelationships ? null : (value) {
                           setState(() {
                             _selectedRelationship = value;
                           });
@@ -491,17 +711,39 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
                           backgroundColor: AppColors.primaryBlue,
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
                         child: _isAddingMember
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  color: Colors.white,
-                                  strokeWidth: 2,
-                                ),
+                            ? Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 2,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    _isEditingMember ? 'Updating...' : 'Adding...',
+                                    style: TextStyle(
+                                      color: Colors.white.withOpacity(0.8),
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ],
                               )
-                            : const Text('Add Member'),
+                            : Text(
+                                _isEditingMember ? 'Update Member' : 'Add Member',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                       ),
                     ),
                   ],
@@ -534,19 +776,39 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh, color: Colors.white),
-            onPressed: _loadFamilyMembers,
-          ),
-          IconButton(
             icon: const Icon(Icons.add, color: Colors.white),
-            onPressed: _showAddMemberDialog,
+            onPressed: _isLoadingRelationships ? null : _showAddMemberDialog,
+            tooltip: _isLoadingRelationships ? 'Loading relationships...' : 'Add family member',
           ),
         ],
       ),
       body: isLoading
-          ? const Center(
-              child: CircularProgressIndicator(
-                color: AppColors.primaryBlue,
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const CircularProgressIndicator(
+                    color: AppColors.primaryBlue,
+                    strokeWidth: 3,
+                  ),
+                  const SizedBox(height: 20),
+                  const Text(
+                    'Loading Family Members...',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Please wait while we fetch your family members',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[600],
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
               ),
             )
           : errorMessage != null
@@ -613,6 +875,7 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
                     )
                   : RefreshIndicator(
                       onRefresh: _loadFamilyMembers,
+                      color: AppColors.primaryBlue,
                       child: ListView.builder(
                         padding: const EdgeInsets.all(16),
                         itemCount: familyMembers.length,
@@ -700,41 +963,39 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
             ],
           ],
         ),
-        trailing: PopupMenuButton(
-          icon: const Icon(Icons.more_vert),
-          itemBuilder: (context) => [
-            const PopupMenuItem(
-              value: 'edit',
-              child: Row(
+        trailing: _isDeletingMember
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AppColors.primaryBlue,
+                ),
+              )
+            : Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.edit, size: 18),
-                  SizedBox(width: 8),
-                  Text('Edit'),
+                  IconButton(
+                    onPressed: () => _showEditMemberDialog(member),
+                    icon: const Icon(
+                      Icons.edit,
+                      color: AppColors.primaryBlue,
+                      size: 20,
+                    ),
+                    tooltip: 'Edit family member',
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    onPressed: () => _showDeleteDialog(member),
+                    icon: const Icon(
+                      Icons.delete,
+                      color: Colors.red,
+                      size: 20,
+                    ),
+                    tooltip: 'Delete family member',
+                  ),
                 ],
               ),
-            ),
-            const PopupMenuItem(
-              value: 'delete',
-              child: Row(
-                children: [
-                  Icon(Icons.delete, size: 18, color: Colors.red),
-                  SizedBox(width: 8),
-                  Text('Delete', style: TextStyle(color: Colors.red)),
-                ],
-              ),
-            ),
-          ],
-          onSelected: (value) {
-            switch (value) {
-              case 'edit':
-                // TODO: Navigate to edit member
-                break;
-              case 'delete':
-                _showDeleteDialog(member);
-                break;
-            }
-          },
-        ),
       ),
     );
   }
@@ -744,33 +1005,181 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: const Text('Delete Family Member'),
-          content: Text(
-            'Are you sure you want to delete "${member.fullName}"? This action cannot be undone.',
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              Icon(
+                Icons.warning_amber_rounded,
+                color: Colors.orange[600],
+                size: 24,
+              ),
+              const SizedBox(width: 8),
+              const Text(
+                'Delete Family Member',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Are you sure you want to delete "${member.fullName}"?',
+                style: const TextStyle(
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'This action cannot be undone and all associated data will be permanently removed.',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[600],
+                ),
+              ),
+            ],
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(
+                  color: AppColors.primaryBlue,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
             ElevatedButton(
-              onPressed: () {
-                // TODO: Implement delete functionality
+              onPressed: () async {
                 Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('${member.fullName} has been deleted')),
-                );
+                await _deleteFamilyMember(member);
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
+                backgroundColor: Colors.red[600],
                 foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
               ),
-              child: const Text('Delete'),
+              child: const Text(
+                'Delete',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
           ],
         );
       },
     );
+  }
+
+  Future<void> _deleteFamilyMember(Dependent member) async {
+    setState(() {
+      _isDeletingMember = true;
+    });
+
+    // Show loading overlay
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return WillPopScope(
+          onWillPop: () async => false,
+          child: Dialog(
+            backgroundColor: Colors.transparent,
+            child: Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircularProgressIndicator(
+                    color: AppColors.primaryBlue,
+                    strokeWidth: 3,
+                  ),
+                  const SizedBox(height: 20),
+                  const Text(
+                    'Deleting Family Member...',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Please wait while we remove ${member.fullName}',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[600],
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    try {
+      print('🗑️ Deleting family member: ${member.id}');
+      
+      final result = await _apiService.deleteDependent(
+        dependentId: member.id,
+        context: context,
+      );
+      
+      // Hide loading overlay
+      Navigator.of(context).pop();
+      
+      if (result['success'] == true) {
+        // Refresh the family members list
+        await _loadFamilyMembers();
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${member.fullName} has been deleted successfully'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['message'] ?? 'Failed to delete family member'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      print('❌ Error deleting family member: $e');
+      // Hide loading overlay
+      Navigator.of(context).pop();
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Network error occurred. Please try again.'),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 4),
+        ),
+      );
+    } finally {
+      setState(() {
+        _isDeletingMember = false;
+      });
+    }
   }
 
   IconData _getGenderIcon(String gender) {

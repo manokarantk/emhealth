@@ -16,6 +16,7 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _cityController = TextEditingController();
+  final _referralCodeController = TextEditingController();
   DateTime? _dob;
   final List<String> _cities = ['New York', 'London', 'Sydney', 'Mumbai', 'Berlin', 'Other'];
   String? _selectedCity;
@@ -28,6 +29,7 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
     _nameController.dispose();
     _emailController.dispose();
     _cityController.dispose();
+    _referralCodeController.dispose();
     super.dispose();
   }
 
@@ -82,7 +84,10 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
             'latitude': 40.7128, // Default coordinates, you can add location picker if needed
             'longitude': -74.006,
             'address': _selectedCity ?? _cityController.text.trim(),
-          }
+          },
+          // Add referral code if provided
+          if (_referralCodeController.text.trim().isNotEmpty)
+            'referred_by': _referralCodeController.text.trim(),
         };
         
         final result = await apiService.post(ApiConfig.completeProfile, profileData);
@@ -369,6 +374,27 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
                           },
                         ),
                       ),
+                    const SizedBox(height: 20),
+                    // Referred By (Referral Code)
+                    TextFormField(
+                      controller: _referralCodeController,
+                      decoration: InputDecoration(
+                        labelText: 'Referred By (Optional)',
+                        prefixIcon: const Icon(Icons.card_giftcard),
+                        filled: true,
+                        fillColor: Colors.white,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: BorderSide.none,
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
+                        hintText: 'Enter referral code if you have one',
+                      ),
+                      validator: (value) {
+                        // Referral code is optional, so no validation required
+                        return null;
+                      },
+                    ),
                     const SizedBox(height: 40),
                     SizedBox(
                       width: double.infinity,

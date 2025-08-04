@@ -17,17 +17,26 @@ class _AddressesScreenState extends State<AddressesScreen> {
 
   // Form controllers
   final TextEditingController _typeController = TextEditingController();
+  final TextEditingController _nameController = TextEditingController();
   final TextEditingController _addressLine1Controller = TextEditingController();
   final TextEditingController _addressLine2Controller = TextEditingController();
   final TextEditingController _cityController = TextEditingController();
   final TextEditingController _stateController = TextEditingController();
   final TextEditingController _countryController = TextEditingController();
   final TextEditingController _pincodeController = TextEditingController();
-  final TextEditingController _postalCodeController = TextEditingController();
-  final TextEditingController _contactNumberController = TextEditingController();
-  
-  bool _isPrimary = false;
+  final TextEditingController _contactNumberController =
+      TextEditingController();
+
+  bool _isPrimary = true;
   bool _isAddingAddress = false;
+  bool _isDeletingAddress = false;
+  bool _isEditingAddress = false;
+
+  // Force rebuild counter
+  int _rebuildCounter = 0;
+  
+  // Edit mode variables
+  Map<String, dynamic>? _editingAddress;
 
   @override
   void initState() {
@@ -38,13 +47,13 @@ class _AddressesScreenState extends State<AddressesScreen> {
   @override
   void dispose() {
     _typeController.dispose();
+    _nameController.dispose();
     _addressLine1Controller.dispose();
     _addressLine2Controller.dispose();
     _cityController.dispose();
     _stateController.dispose();
     _countryController.dispose();
     _pincodeController.dispose();
-    _postalCodeController.dispose();
     _contactNumberController.dispose();
     super.dispose();
   }
@@ -57,7 +66,7 @@ class _AddressesScreenState extends State<AddressesScreen> {
 
     try {
       final result = await _apiService.getUserAddresses(context);
-      
+
       if (result['success']) {
         final List<dynamic> data = result['data'] ?? [];
         setState(() {
@@ -134,35 +143,89 @@ class _AddressesScreenState extends State<AddressesScreen> {
     });
 
     try {
-      final result = await _apiService.addAddress(
-        type: _typeController.text.trim(),
-        addressLine1: _addressLine1Controller.text.trim(),
-        addressLine2: _addressLine2Controller.text.trim().isNotEmpty ? _addressLine2Controller.text.trim() : null,
-        city: _cityController.text.trim(),
-        state: _stateController.text.trim(),
-        country: _countryController.text.trim(),
-        pincode: _pincodeController.text.trim(),
-        isPrimary: _isPrimary,
-        postalCode: _postalCodeController.text.trim().isNotEmpty ? _postalCodeController.text.trim() : null,
-        contactNumber: _contactNumberController.text.trim(),
-        context: context,
-      );
-
-      if (result['status'] == 'success') {
-        Navigator.of(context).pop(); // Close bottom sheet
-        _clearForm();
-        _loadAddresses(); // Refresh the list
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Address added successfully!')),
+      if (_isEditingAddress && _editingAddress != null) {
+        // Update existing address
+        print('🔄 Edit mode - calling update API...');
+        final result = await _apiService.updateAddress(
+          addressId: _editingAddress!['id'],
+          type: _typeController.text.trim(),
+          name: _nameController.text.trim().isNotEmpty ? _nameController.text.trim() : null,
+          addressLine1: _addressLine1Controller.text.trim(),
+          addressLine2: _addressLine2Controller.text.trim().isNotEmpty
+              ? _addressLine2Controller.text.trim()
+              : null,
+          city: _cityController.text.trim(),
+          state: _stateController.text.trim(),
+          country: _countryController.text.trim(),
+          pincode: _pincodeController.text.trim(),
+          isPrimary: _isPrimary,
+          contactNumber: _contactNumberController.text.trim(),
+          context: context,
         );
+        
+        if (result['success'] == true) {
+          Navigator.of(context).pop(); // Close bottom sheet
+          _clearForm();
+          _loadAddresses(); // Refresh the list
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Address updated successfully!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result['message'] ?? 'Failed to update address'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(result['message'] ?? 'Failed to add address')),
+        // Add new address
+        print('🔄 Add mode - calling add API...');
+        final result = await _apiService.addAddress(
+          type: _typeController.text.trim(),
+          name: _nameController.text.trim().isNotEmpty ? _nameController.text.trim() : null,
+          addressLine1: _addressLine1Controller.text.trim(),
+          addressLine2: _addressLine2Controller.text.trim().isNotEmpty
+              ? _addressLine2Controller.text.trim()
+              : null,
+          city: _cityController.text.trim(),
+          state: _stateController.text.trim(),
+          country: _countryController.text.trim(),
+          pincode: _pincodeController.text.trim(),
+          isPrimary: _isPrimary,
+          contactNumber: _contactNumberController.text.trim(),
+          context: context,
         );
+        print("result");
+        print(result);
+        if (result['success'] == true) {
+          Navigator.of(context).pop(); // Close bottom sheet
+          _clearForm();
+          _loadAddresses(); // Refresh the list
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Address added successfully!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result['message'] ?? 'Failed to add address'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Network error occurred')),
+        const SnackBar(
+          content: Text('Network error occurred'),
+          backgroundColor: Colors.red,
+        ),
       );
     } finally {
       setState(() {
@@ -173,18 +236,51 @@ class _AddressesScreenState extends State<AddressesScreen> {
 
   void _clearForm() {
     _typeController.clear();
+    _nameController.clear();
     _addressLine1Controller.clear();
     _addressLine2Controller.clear();
     _cityController.clear();
     _stateController.clear();
     _countryController.clear();
     _pincodeController.clear();
-    _postalCodeController.clear();
     _contactNumberController.clear();
     _isPrimary = false;
   }
 
+  void _showEditAddressDialog(Map<String, dynamic> address) {
+    // Set edit mode and populate form with existing data
+    setState(() {
+      _isEditingAddress = true;
+      _editingAddress = address;
+    });
+    
+    // Populate form fields with existing data
+    _typeController.text = address['type'] ?? '';
+    _nameController.text = address['name'] ?? address['full_name'] ?? '';
+    _addressLine1Controller.text = address['address_line1'] ?? address['address'] ?? '';
+    _addressLine2Controller.text = address['address_line2'] ?? '';
+    _cityController.text = address['city'] ?? '';
+    _stateController.text = address['state'] ?? '';
+    _countryController.text = address['country'] ?? '';
+    _pincodeController.text = address['pincode'] ?? '';
+    _contactNumberController.text = address['contact_number'] ?? address['phone'] ?? '';
+    _isPrimary = address['is_primary'] == true || address['isDefault'] == true;
+    
+    _showAddressFormDialog('Edit Address');
+  }
+
   void _showAddAddressDialog() {
+    // Reset form for add mode
+    setState(() {
+      _isEditingAddress = false;
+      _editingAddress = null;
+    });
+    
+    _clearForm();
+    _showAddressFormDialog('Add New Address');
+  }
+
+  void _showAddressFormDialog(String title) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -217,9 +313,9 @@ class _AddressesScreenState extends State<AddressesScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
-                      'Add New Address',
-                      style: TextStyle(
+                    Text(
+                      title,
+                      style: const TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
                       ),
@@ -238,31 +334,41 @@ class _AddressesScreenState extends State<AddressesScreen> {
                   child: Column(
                     children: [
                       DropdownButtonFormField<String>(
-                        value: _typeController.text.isEmpty ? null : _typeController.text,
+                        value: _typeController.text.isEmpty
+                            ? null
+                            : _typeController.text,
                         decoration: InputDecoration(
                           labelText: 'Address Type',
-                          prefixIcon: const Icon(Icons.home, color: AppColors.primaryBlue),
+                          prefixIcon: const Icon(Icons.home,
+                              color: AppColors.primaryBlue),
                           filled: true,
                           fillColor: Colors.white,
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(color: Colors.grey, width: 1),
+                            borderSide:
+                                const BorderSide(color: Colors.grey, width: 1),
                           ),
                           enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(color: Colors.grey, width: 1),
+                            borderSide:
+                                const BorderSide(color: Colors.grey, width: 1),
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(color: AppColors.primaryBlue, width: 2),
+                            borderSide: const BorderSide(
+                                color: AppColors.primaryBlue, width: 2),
                           ),
-                          contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
+                          contentPadding: const EdgeInsets.symmetric(
+                              vertical: 18, horizontal: 16),
                         ),
                         items: const [
                           DropdownMenuItem(value: 'Home', child: Text('Home')),
-                          DropdownMenuItem(value: 'Office', child: Text('Office')),
-                          DropdownMenuItem(value: 'Other', child: Text('Other')),
-                          DropdownMenuItem(value: 'registered', child: Text('Registered')),
+                          DropdownMenuItem(
+                              value: 'Office', child: Text('Office')),
+                          DropdownMenuItem(
+                              value: 'Other', child: Text('Other')),
+                          DropdownMenuItem(
+                              value: 'registered', child: Text('Registered')),
                         ],
                         onChanged: (value) {
                           setState(() {
@@ -272,24 +378,30 @@ class _AddressesScreenState extends State<AddressesScreen> {
                       ),
                       const SizedBox(height: 20),
                       TextFormField(
+                        controller: _nameController,
                         decoration: InputDecoration(
                           labelText: 'Full Name',
-                          prefixIcon: const Icon(Icons.person, color: AppColors.primaryBlue),
+                          prefixIcon: const Icon(Icons.person,
+                              color: AppColors.primaryBlue),
                           filled: true,
                           fillColor: Colors.white,
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(color: Colors.grey, width: 1),
+                            borderSide:
+                                const BorderSide(color: Colors.grey, width: 1),
                           ),
                           enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(color: Colors.grey, width: 1),
+                            borderSide:
+                                const BorderSide(color: Colors.grey, width: 1),
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(color: AppColors.primaryBlue, width: 2),
+                            borderSide: const BorderSide(
+                                color: AppColors.primaryBlue, width: 2),
                           ),
-                          contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
+                          contentPadding: const EdgeInsets.symmetric(
+                              vertical: 18, horizontal: 16),
                         ),
                       ),
                       const SizedBox(height: 20),
@@ -297,22 +409,27 @@ class _AddressesScreenState extends State<AddressesScreen> {
                         controller: _contactNumberController,
                         decoration: InputDecoration(
                           labelText: 'Contact Number',
-                          prefixIcon: const Icon(Icons.phone, color: AppColors.primaryBlue),
+                          prefixIcon: const Icon(Icons.phone,
+                              color: AppColors.primaryBlue),
                           filled: true,
                           fillColor: Colors.white,
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(color: Colors.grey, width: 1),
+                            borderSide:
+                                const BorderSide(color: Colors.grey, width: 1),
                           ),
                           enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(color: Colors.grey, width: 1),
+                            borderSide:
+                                const BorderSide(color: Colors.grey, width: 1),
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(color: AppColors.primaryBlue, width: 2),
+                            borderSide: const BorderSide(
+                                color: AppColors.primaryBlue, width: 2),
                           ),
-                          contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
+                          contentPadding: const EdgeInsets.symmetric(
+                              vertical: 18, horizontal: 16),
                         ),
                         keyboardType: TextInputType.phone,
                       ),
@@ -321,22 +438,27 @@ class _AddressesScreenState extends State<AddressesScreen> {
                         controller: _addressLine1Controller,
                         decoration: InputDecoration(
                           labelText: 'Address Line 1',
-                          prefixIcon: const Icon(Icons.location_on, color: AppColors.primaryBlue),
+                          prefixIcon: const Icon(Icons.location_on,
+                              color: AppColors.primaryBlue),
                           filled: true,
                           fillColor: Colors.white,
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(color: Colors.grey, width: 1),
+                            borderSide:
+                                const BorderSide(color: Colors.grey, width: 1),
                           ),
                           enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(color: Colors.grey, width: 1),
+                            borderSide:
+                                const BorderSide(color: Colors.grey, width: 1),
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(color: AppColors.primaryBlue, width: 2),
+                            borderSide: const BorderSide(
+                                color: AppColors.primaryBlue, width: 2),
                           ),
-                          contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
+                          contentPadding: const EdgeInsets.symmetric(
+                              vertical: 18, horizontal: 16),
                         ),
                         maxLines: 2,
                       ),
@@ -345,22 +467,27 @@ class _AddressesScreenState extends State<AddressesScreen> {
                         controller: _addressLine2Controller,
                         decoration: InputDecoration(
                           labelText: 'Address Line 2 (Optional)',
-                          prefixIcon: const Icon(Icons.place, color: AppColors.primaryBlue),
+                          prefixIcon: const Icon(Icons.place,
+                              color: AppColors.primaryBlue),
                           filled: true,
                           fillColor: Colors.white,
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(color: Colors.grey, width: 1),
+                            borderSide:
+                                const BorderSide(color: Colors.grey, width: 1),
                           ),
                           enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(color: Colors.grey, width: 1),
+                            borderSide:
+                                const BorderSide(color: Colors.grey, width: 1),
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(color: AppColors.primaryBlue, width: 2),
+                            borderSide: const BorderSide(
+                                color: AppColors.primaryBlue, width: 2),
                           ),
-                          contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
+                          contentPadding: const EdgeInsets.symmetric(
+                              vertical: 18, horizontal: 16),
                         ),
                       ),
                       const SizedBox(height: 20),
@@ -368,22 +495,27 @@ class _AddressesScreenState extends State<AddressesScreen> {
                         controller: _cityController,
                         decoration: InputDecoration(
                           labelText: 'City',
-                          prefixIcon: const Icon(Icons.location_city, color: AppColors.primaryBlue),
+                          prefixIcon: const Icon(Icons.location_city,
+                              color: AppColors.primaryBlue),
                           filled: true,
                           fillColor: Colors.white,
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(color: Colors.grey, width: 1),
+                            borderSide:
+                                const BorderSide(color: Colors.grey, width: 1),
                           ),
                           enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(color: Colors.grey, width: 1),
+                            borderSide:
+                                const BorderSide(color: Colors.grey, width: 1),
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(color: AppColors.primaryBlue, width: 2),
+                            borderSide: const BorderSide(
+                                color: AppColors.primaryBlue, width: 2),
                           ),
-                          contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
+                          contentPadding: const EdgeInsets.symmetric(
+                              vertical: 18, horizontal: 16),
                         ),
                       ),
                       const SizedBox(height: 20),
@@ -391,22 +523,27 @@ class _AddressesScreenState extends State<AddressesScreen> {
                         controller: _stateController,
                         decoration: InputDecoration(
                           labelText: 'State',
-                          prefixIcon: const Icon(Icons.map, color: AppColors.primaryBlue),
+                          prefixIcon: const Icon(Icons.map,
+                              color: AppColors.primaryBlue),
                           filled: true,
                           fillColor: Colors.white,
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(color: Colors.grey, width: 1),
+                            borderSide:
+                                const BorderSide(color: Colors.grey, width: 1),
                           ),
                           enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(color: Colors.grey, width: 1),
+                            borderSide:
+                                const BorderSide(color: Colors.grey, width: 1),
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(color: AppColors.primaryBlue, width: 2),
+                            borderSide: const BorderSide(
+                                color: AppColors.primaryBlue, width: 2),
                           ),
-                          contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
+                          contentPadding: const EdgeInsets.symmetric(
+                              vertical: 18, horizontal: 16),
                         ),
                       ),
                       const SizedBox(height: 20),
@@ -414,22 +551,27 @@ class _AddressesScreenState extends State<AddressesScreen> {
                         controller: _countryController,
                         decoration: InputDecoration(
                           labelText: 'Country',
-                          prefixIcon: const Icon(Icons.public, color: AppColors.primaryBlue),
+                          prefixIcon: const Icon(Icons.public,
+                              color: AppColors.primaryBlue),
                           filled: true,
                           fillColor: Colors.white,
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(color: Colors.grey, width: 1),
+                            borderSide:
+                                const BorderSide(color: Colors.grey, width: 1),
                           ),
                           enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(color: Colors.grey, width: 1),
+                            borderSide:
+                                const BorderSide(color: Colors.grey, width: 1),
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(color: AppColors.primaryBlue, width: 2),
+                            borderSide: const BorderSide(
+                                color: AppColors.primaryBlue, width: 2),
                           ),
-                          contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
+                          contentPadding: const EdgeInsets.symmetric(
+                              vertical: 18, horizontal: 16),
                         ),
                       ),
                       const SizedBox(height: 20),
@@ -437,59 +579,121 @@ class _AddressesScreenState extends State<AddressesScreen> {
                         controller: _pincodeController,
                         decoration: InputDecoration(
                           labelText: 'Pincode',
-                          prefixIcon: const Icon(Icons.pin_drop, color: AppColors.primaryBlue),
+                          prefixIcon: const Icon(Icons.pin_drop,
+                              color: AppColors.primaryBlue),
                           filled: true,
                           fillColor: Colors.white,
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(color: Colors.grey, width: 1),
+                            borderSide:
+                                const BorderSide(color: Colors.grey, width: 1),
                           ),
                           enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(color: Colors.grey, width: 1),
+                            borderSide:
+                                const BorderSide(color: Colors.grey, width: 1),
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(color: AppColors.primaryBlue, width: 2),
+                            borderSide: const BorderSide(
+                                color: AppColors.primaryBlue, width: 2),
                           ),
-                          contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
+                          contentPadding: const EdgeInsets.symmetric(
+                              vertical: 18, horizontal: 16),
                         ),
                         keyboardType: TextInputType.number,
                       ),
                       const SizedBox(height: 20),
-                      TextFormField(
-                        controller: _postalCodeController,
-                        decoration: InputDecoration(
-                          labelText: 'Postal Code (Optional)',
-                          prefixIcon: const Icon(Icons.mail, color: AppColors.primaryBlue),
-                          filled: true,
-                          fillColor: Colors.white,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(color: Colors.grey, width: 1),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(color: Colors.grey, width: 1),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(color: AppColors.primaryBlue, width: 2),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
+
+                      // Debug widget to show current state
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        color: Colors.yellow.withOpacity(0.3),
+                        child: Text(
+                          'DEBUG: _isPrimary = $_isPrimary',
+                          style: const TextStyle(fontSize: 12),
                         ),
                       ),
+
                       const SizedBox(height: 20),
-                      CheckboxListTile(
-                        title: const Text('Set as Primary Address'),
-                        value: _isPrimary,
-                        onChanged: (value) {
-                          setState(() {
-                            _isPrimary = value ?? false;
-                          });
-                        },
-                        controlAffinity: ListTileControlAffinity.leading,
-                        activeColor: AppColors.primaryBlue,
+
+                      Container(
+                        decoration: BoxDecoration(
+                          color: _isPrimary
+                              ? AppColors.primaryBlue.withOpacity(0.05)
+                              : Colors.grey[50],
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: _isPrimary
+                                ? AppColors.primaryBlue.withOpacity(0.3)
+                                : Colors.grey[200]!,
+                            width: _isPrimary ? 2 : 1,
+                          ),
+                        ),
+                        child: InkWell(
+                          onTap: () {
+                            print(
+                                '🔄 Checkbox container tapped! Current value: $_isPrimary');
+                            setState(() {
+                              _isPrimary = !_isPrimary;
+                              _rebuildCounter++;
+                            });
+                            print(
+                                '🔄 Checkbox state toggled to: $_isPrimary, rebuild: $_rebuildCounter');
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 12),
+                            child: Row(
+                              children: [
+                                Checkbox(
+                                  value: _isPrimary ?? false,
+                                  onChanged: (value) {
+                                    print(
+                                        '🔄 Checkbox clicked! Current value: $_isPrimary, New value: $value');
+                                    setState(() {
+                                      _isPrimary = value ?? false;
+                                    });
+                                    print(
+                                        '🔄 Checkbox state updated to: $_isPrimary');
+                                  },
+                                  activeColor: AppColors.primaryBlue,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Set as Primary Address',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w500,
+                                          fontSize: 16,
+                                          color: _isPrimary
+                                              ? AppColors.primaryBlue
+                                              : Colors.black87,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        _isPrimary
+                                            ? '✓ This address will be your default delivery address'
+                                            : 'This address will be used as your default delivery address',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: _isPrimary
+                                              ? AppColors.primaryBlue
+                                              : Colors.grey[600],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                       ),
                       const SizedBox(height: 20),
                     ],
@@ -542,7 +746,7 @@ class _AddressesScreenState extends State<AddressesScreen> {
                                   strokeWidth: 2,
                                 ),
                               )
-                            : const Text('Add Address'),
+                            : Text(_isEditingAddress ? 'Update Address' : 'Add Address'),
                       ),
                     ),
                   ],
@@ -574,12 +778,15 @@ class _AddressesScreenState extends State<AddressesScreen> {
                 setState(() {
                   // Update all addresses to set the selected one as default
                   for (int i = 0; i < addresses.length; i++) {
-                    addresses[i]['isDefault'] = addresses[i]['id'] == address['id'];
+                    addresses[i]['isDefault'] =
+                        addresses[i]['id'] == address['id'];
                   }
                 });
                 Navigator.of(context).pop();
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('${address['type']} address is now your default address')),
+                  SnackBar(
+                      content: Text(
+                          '${address['type']} address is now your default address')),
                 );
               },
               style: ElevatedButton.styleFrom(
@@ -592,6 +799,188 @@ class _AddressesScreenState extends State<AddressesScreen> {
         );
       },
     );
+  }
+
+  void _showDeleteAddressDialog(Map<String, dynamic> address) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              Icon(
+                Icons.warning_amber_rounded,
+                color: Colors.orange[600],
+                size: 24,
+              ),
+              const SizedBox(width: 8),
+              const Text(
+                'Delete Address',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Are you sure you want to delete "${address['type'] ?? 'Address'} - ${address['address_line1'] ?? address['address'] ?? ''}"?',
+                style: const TextStyle(
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'This action cannot be undone and the address will be permanently removed.',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[600],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(
+                  color: AppColors.primaryBlue,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                await _deleteAddress(address);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red[600],
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text(
+                'Delete',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _deleteAddress(Map<String, dynamic> address) async {
+    setState(() {
+      _isDeletingAddress = true;
+    });
+
+    // Show loading overlay
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return WillPopScope(
+          onWillPop: () async => false,
+          child: Dialog(
+            backgroundColor: Colors.transparent,
+            child: Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircularProgressIndicator(
+                    color: AppColors.primaryBlue,
+                    strokeWidth: 3,
+                  ),
+                  const SizedBox(height: 20),
+                  const Text(
+                    'Deleting Address...',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Please wait while we remove ${address['type'] ?? 'Address'}',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[600],
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    try {
+      print('🗑️ Deleting address: ${address['id']}');
+      
+      final result = await _apiService.deleteAddress(
+        addressId: address['id'],
+        context: context,
+      );
+      
+      // Hide loading overlay
+      Navigator.of(context).pop();
+      
+      if (result['success'] == true) {
+        // Refresh the addresses list
+        await _loadAddresses();
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${address['type']} address has been deleted successfully'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['message'] ?? 'Failed to delete address'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      print('❌ Error deleting address: $e');
+      // Hide loading overlay
+      Navigator.of(context).pop();
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Network error occurred. Please try again.'),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 4),
+        ),
+      );
+    } finally {
+      setState(() {
+        _isDeletingAddress = false;
+      });
+    }
   }
 
   @override
@@ -613,20 +1002,46 @@ class _AddressesScreenState extends State<AddressesScreen> {
           onPressed: () => Navigator.of(context).pop(),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh, color: Colors.white),
-            onPressed: _loadAddresses,
-          ),
-          IconButton(
-            icon: const Icon(Icons.add, color: Colors.white),
+          TextButton(
             onPressed: _showAddAddressDialog,
+            child: const Text(
+              'Add',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
         ],
       ),
       body: isLoading
-          ? const Center(
-              child: CircularProgressIndicator(
-                color: AppColors.primaryBlue,
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const CircularProgressIndicator(
+                    color: AppColors.primaryBlue,
+                    strokeWidth: 3,
+                  ),
+                  const SizedBox(height: 20),
+                  const Text(
+                    'Loading Addresses...',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Please wait while we fetch your addresses',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[600],
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
               ),
             )
           : errorMessage != null
@@ -693,6 +1108,7 @@ class _AddressesScreenState extends State<AddressesScreen> {
                     )
                   : RefreshIndicator(
                       onRefresh: _loadAddresses,
+                      color: AppColors.primaryBlue,
                       child: ListView.builder(
                         padding: const EdgeInsets.all(16),
                         itemCount: addresses.length,
@@ -706,8 +1122,9 @@ class _AddressesScreenState extends State<AddressesScreen> {
   }
 
   Widget _buildAddressCard(Map<String, dynamic> address) {
-    final isDefault = address['isDefault'] == true || address['is_primary'] == true;
-    
+    final isDefault =
+        address['isDefault'] == true || address['is_primary'] == true;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
@@ -775,7 +1192,8 @@ class _AddressesScreenState extends State<AddressesScreen> {
                 color: Colors.grey[600],
               ),
             ),
-            if ((address['contact_number'] ?? address['phone'] ?? '').isNotEmpty) ...[
+            if ((address['contact_number'] ?? address['phone'] ?? '')
+                .isNotEmpty) ...[
               const SizedBox(height: 4),
               Row(
                 children: [
@@ -793,68 +1211,54 @@ class _AddressesScreenState extends State<AddressesScreen> {
             ],
           ],
         ),
-        trailing: PopupMenuButton(
-          icon: const Icon(Icons.more_vert),
-          itemBuilder: (context) => [
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
             if (!isDefault) ...[
-              const PopupMenuItem(
-                value: 'set_default',
-                child: Row(
-                  children: [
-                    Icon(Icons.star, size: 18, color: AppColors.primaryBlue),
-                    SizedBox(width: 8),
-                    Text('Set as Default', style: TextStyle(color: AppColors.primaryBlue)),
-                  ],
+              IconButton(
+                onPressed: () => _showSetDefaultDialog(address),
+                icon: const Icon(
+                  Icons.star,
+                  color: AppColors.primaryBlue,
+                  size: 20,
                 ),
+                tooltip: 'Set as default address',
               ),
-              const PopupMenuItem(
-                value: 'edit',
-                child: Row(
-                  children: [
-                    Icon(Icons.edit, size: 18),
-                    SizedBox(width: 8),
-                    Text('Edit'),
-                  ],
-                ),
+              const SizedBox(width: 8),
+            ],
+            IconButton(
+              onPressed: () => _showEditAddressDialog(address),
+              icon: const Icon(
+                Icons.edit,
+                color: AppColors.primaryBlue,
+                size: 20,
               ),
-              const PopupMenuItem(
-                value: 'delete',
-                child: Row(
-                  children: [
-                    Icon(Icons.delete, size: 18, color: Colors.red),
-                    SizedBox(width: 8),
-                    Text('Delete', style: TextStyle(color: Colors.red)),
-                  ],
-                ),
-              ),
-            ] else ...[
-              const PopupMenuItem(
-                value: 'edit',
-                child: Row(
-                  children: [
-                    Icon(Icons.edit, size: 18),
-                    SizedBox(width: 8),
-                    Text('Edit'),
-                  ],
-                ),
-              ),
+              tooltip: 'Edit address',
+            ),
+            if (!isDefault) ...[
+              const SizedBox(width: 8),
+              _isDeletingAddress
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.red,
+                      ),
+                    )
+                  : IconButton(
+                      onPressed: () => _showDeleteAddressDialog(address),
+                      icon: const Icon(
+                        Icons.delete,
+                        color: Colors.red,
+                        size: 20,
+                      ),
+                      tooltip: 'Delete address',
+                    ),
             ],
           ],
-          onSelected: (value) {
-            switch (value) {
-              case 'set_default':
-                _showSetDefaultDialog(address);
-                break;
-              case 'edit':
-                // TODO: Navigate to edit address
-                break;
-              case 'delete':
-                // TODO: Show delete confirmation
-                break;
-            }
-          },
         ),
       ),
     );
   }
-} 
+}

@@ -3,7 +3,7 @@ import '../constants/colors.dart';
 import '../services/intro_service.dart';
 
 class IntroScreen extends StatefulWidget {
-  const IntroScreen({Key? key}) : super(key: key);
+  const IntroScreen({super.key});
 
   @override
   State<IntroScreen> createState() => _IntroScreenState();
@@ -67,7 +67,7 @@ class _IntroScreenState extends State<IntroScreen> {
                 padding: const EdgeInsets.all(16.0),
                 child: TextButton(
                   onPressed: _navigateToHome,
-                  child: Text(
+                  child: const Text(
                     'Skip',
                     style: TextStyle(
                       color: AppColors.primaryBlue,

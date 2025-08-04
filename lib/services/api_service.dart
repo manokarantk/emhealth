@@ -41,7 +41,7 @@ class ApiService {
       };
     }
     
-    if (response.statusCode == 200) {
+    if (response.statusCode == 200 || response.statusCode == 201) {
       return {
         'success': true,
         'data': responseData['data'],
@@ -820,7 +820,7 @@ class ApiService {
       final headers = await _headers;
       print('🔄 API: Headers = $headers');
       
-      final url = '${ApiConfig.baseUrl}${ApiConfig.organizationsTimeslots}';
+      const url = '${ApiConfig.baseUrl}${ApiConfig.organizationsTimeslots}';
       print('🔄 API: URL = $url');
       
       final requestBody = {
@@ -867,9 +867,6 @@ class ApiService {
 
   // Check if user profile is complete
   static bool isProfileComplete(Map<String, dynamic> userData) {
-    if (userData == null) return false;
-    
-    // Check for required fields
     final firstName = userData['firstName']?.toString();
     final lastName = userData['lastName']?.toString();
     final email = userData['email']?.toString();
@@ -1125,6 +1122,88 @@ class ApiService {
     }
   }
 
+  // Delete Dependent API
+  Future<Map<String, dynamic>> deleteDependent({
+    required String dependentId,
+    BuildContext? context,
+  }) async {
+    try {
+      print('🗑️ Delete Dependent API: Deleting dependent with ID: $dependentId');
+      
+      final headers = await _headers;
+      final response = await http.delete(
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.dependents}/$dependentId'),
+        headers: headers,
+      );
+
+      print('🗑️ Delete Dependent API Response Status: ${response.statusCode}');
+      print('🗑️ Delete Dependent API Response Body: ${response.body}');
+
+      return _handleResponse(response, context);
+    } catch (e) {
+      print('❌ Error deleting dependent: $e');
+      return {
+        'success': false,
+        'message': 'Network error occurred',
+        'error': e.toString(),
+      };
+    }
+  }
+
+  // Update Dependent API
+  Future<Map<String, dynamic>> updateDependent({
+    required String dependentId,
+    required String firstName,
+    required String lastName,
+    required int relationshipId,
+    required String contactNumber,
+    required String dateOfBirth,
+    required String gender,
+    String? email,
+    BuildContext? context,
+  }) async {
+    try {
+      print('✏️ Update Dependent API: Updating dependent with ID: $dependentId');
+      print('✏️ Update Dependent API: Request data:');
+      print('  - First Name: $firstName');
+      print('  - Last Name: $lastName');
+      print('  - Relationship ID: $relationshipId');
+      print('  - Contact: $contactNumber');
+      print('  - DOB: $dateOfBirth');
+      print('  - Gender: $gender');
+      print('  - Email: $email');
+      
+      final headers = await _headers;
+      final data = {
+        'first_name': firstName,
+        'last_name': lastName,
+        'relationship_id': relationshipId,
+        'contact_number': contactNumber,
+        'date_of_birth': dateOfBirth,
+        'gender': gender,
+        if (email != null && email.isNotEmpty) 'email': email,
+      };
+
+      final response = await http.put(
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.dependents}/$dependentId'),
+        headers: headers,
+        body: jsonEncode(data),
+      );
+
+      print('✏️ Update Dependent API Response Status: ${response.statusCode}');
+      print('✏️ Update Dependent API Response Body: ${response.body}');
+
+      return _handleResponse(response, context);
+    } catch (e) {
+      print('❌ Error updating dependent: $e');
+      return {
+        'success': false,
+        'message': 'Network error occurred',
+        'error': e.toString(),
+      };
+    }
+  }
+
   // Get User Addresses API
   Future<Map<String, dynamic>> getUserAddresses(BuildContext? context) async {
     try {
@@ -1147,6 +1226,7 @@ class ApiService {
   // Add Address API
   Future<Map<String, dynamic>> addAddress({
     required String type,
+    String? name,
     required String addressLine1,
     String? addressLine2,
     required String city,
@@ -1164,6 +1244,7 @@ class ApiService {
       final headers = await _headers;
       final data = {
         'type': type,
+        if (name != null && name.isNotEmpty) 'name': name,
         'address_line1': addressLine1,
         if (addressLine2 != null && addressLine2.isNotEmpty) 'address_line2': addressLine2,
         'city': city,
@@ -1193,6 +1274,103 @@ class ApiService {
     }
   }
 
+  // Delete Address API
+  Future<Map<String, dynamic>> deleteAddress({
+    required String addressId,
+    BuildContext? context,
+  }) async {
+    try {
+      print('🗑️ Delete Address API: Deleting address with ID: $addressId');
+      
+      final headers = await _headers;
+      final response = await http.delete(
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.profileAddresses}/$addressId'),
+        headers: headers,
+      );
+
+      print('🗑️ Delete Address API Response Status: ${response.statusCode}');
+      print('🗑️ Delete Address API Response Body: ${response.body}');
+
+      return _handleResponse(response, context);
+    } catch (e) {
+      print('❌ Error deleting address: $e');
+      return {
+        'success': false,
+        'message': 'Network error occurred',
+        'error': e.toString(),
+      };
+    }
+  }
+
+  // Update Address API
+  Future<Map<String, dynamic>> updateAddress({
+    required String addressId,
+    required String type,
+    String? name,
+    required String addressLine1,
+    String? addressLine2,
+    required String city,
+    required String state,
+    required String country,
+    required String pincode,
+    bool isPrimary = false,
+    String? postalCode,
+    double? latitude,
+    double? longitude,
+    required String contactNumber,
+    BuildContext? context,
+  }) async {
+    try {
+      print('✏️ Update Address API: Updating address with ID: $addressId');
+      print('✏️ Update Address API: Request data:');
+      print('  - Type: $type');
+      print('  - Name: $name');
+      print('  - Address Line 1: $addressLine1');
+      print('  - Address Line 2: $addressLine2');
+      print('  - City: $city');
+      print('  - State: $state');
+      print('  - Country: $country');
+      print('  - Pincode: $pincode');
+      print('  - Is Primary: $isPrimary');
+      print('  - Contact Number: $contactNumber');
+      
+      final headers = await _headers;
+      final data = {
+        'type': type,
+        if (name != null && name.isNotEmpty) 'name': name,
+        'address_line1': addressLine1,
+        if (addressLine2 != null && addressLine2.isNotEmpty) 'address_line2': addressLine2,
+        'city': city,
+        'state': state,
+        'country': country,
+        'pincode': pincode,
+        'is_primary': isPrimary,
+        if (postalCode != null && postalCode.isNotEmpty) 'postal_code': postalCode,
+        if (latitude != null) 'latitude': latitude,
+        if (longitude != null) 'longitude': longitude,
+        'contact_number': contactNumber,
+      };
+
+      final response = await http.put(
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.profileAddresses}/$addressId'),
+        headers: headers,
+        body: jsonEncode(data),
+      );
+
+      print('✏️ Update Address API Response Status: ${response.statusCode}');
+      print('✏️ Update Address API Response Body: ${response.body}');
+
+      return _handleResponse(response, context);
+    } catch (e) {
+      print('❌ Error updating address: $e');
+      return {
+        'success': false,
+        'message': 'Network error occurred',
+        'error': e.toString(),
+      };
+    }
+  }
+
   // Clear Cart API
   Future<Map<String, dynamic>> clearCart(BuildContext? context) async {
     try {
@@ -1208,6 +1386,52 @@ class ApiService {
       return _handleResponse(response, context);
     } catch (e) {
       print('❌ Error clearing cart: $e');
+      return {
+        'success': false,
+        'message': 'Network error occurred',
+        'error': e.toString(),
+      };
+    }
+  }
+
+  // Get Referral Stats API
+  Future<Map<String, dynamic>> getReferralStats(BuildContext? context) async {
+    try {
+      final headers = await _headers;
+      final response = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.referralStats}'),
+        headers: headers,
+      );
+
+      print('📊 Referral Stats API Response Status: ${response.statusCode}');
+      print('📊 Referral Stats API Response Body: ${response.body}');
+
+      return _handleResponse(response, context);
+    } catch (e) {
+      print('❌ Error getting referral stats: $e');
+      return {
+        'success': false,
+        'message': 'Network error occurred',
+        'error': e.toString(),
+      };
+    }
+  }
+
+  // Get Relationships API
+  Future<Map<String, dynamic>> getRelationships(BuildContext? context) async {
+    try {
+      final headers = await _headers;
+      final response = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.relationships}'),
+        headers: headers,
+      );
+
+      print('👥 Relationships API Response Status: ${response.statusCode}');
+      print('👥 Relationships API Response Body: ${_handleResponse(response, context)}');
+
+      return _handleResponse(response, context);
+    } catch (e) {
+      print('❌ Error getting relationships: $e');
       return {
         'success': false,
         'message': 'Network error occurred',

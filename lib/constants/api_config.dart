@@ -1,6 +1,6 @@
 class ApiConfig {
   // Base URL
-  static const String baseUrl = 'http://159.89.173.18:3000/api/v1';
+  static const String baseUrl = 'http://localhost:3000/api/v1';
   
   // Auth endpoints
   static const String requestOtp = '/auth/request-otp';
@@ -34,6 +34,7 @@ class ApiConfig {
   static const String familyMembers = '/family-members';
   static const String dependents = '/profile/dependents';
   static const String addDependent = '/profile/dependents';
+  static const String relationships = '/mobile/relationships';
   
   // Addresses endpoints
   static const String addresses = '/addresses';
@@ -83,4 +84,7 @@ class ApiConfig {
   
   // Appointments endpoints
   static const String createAppointment = '/mobile/appointments';
+  
+  // Referral endpoints
+  static const String referralStats = '/mobile/referrals/stats';
 } 

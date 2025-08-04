@@ -7,7 +7,7 @@ import '../services/api_service.dart';
 import '../services/token_service.dart';
 
 class OtpVerificationScreen extends StatefulWidget {
-  const OtpVerificationScreen({Key? key}) : super(key: key);
+  const OtpVerificationScreen({super.key});
 
   @override
   State<OtpVerificationScreen> createState() => _OtpVerificationScreenState();
@@ -292,7 +292,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Text(
+                      const Text(
                         'OTP Verification',
                         style: TextStyle(
                           fontSize: 28,
@@ -301,7 +301,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      Text(
+                      const Text(
                         'We have sent a verification code to',
                         style: TextStyle(
                           fontSize: 16,
@@ -350,7 +350,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                               children: [
                                 Text(
                                   '$_countryCode $_phoneNumber',
-                                  style: TextStyle(
+                                  style: const TextStyle(
                                     fontSize: 18,
                                     color: AppColors.primaryBlue,
                                     fontWeight: FontWeight.bold,
@@ -454,9 +454,9 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                                 valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                               ),
                             )
-                          : Row(
+                          : const Row(
                               mainAxisAlignment: MainAxisAlignment.center,
-                              children: const [
+                              children: [
                                 Text(
                                   'Verify',
                                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),

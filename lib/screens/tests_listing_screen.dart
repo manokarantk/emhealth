@@ -7,11 +7,11 @@ class TestsListingScreen extends StatefulWidget {
   final Function(String) onRemoveFromCart;
 
   const TestsListingScreen({
-    Key? key,
+    super.key,
     required this.cartItems,
     required this.onAddToCart,
     required this.onRemoveFromCart,
-  }) : super(key: key);
+  });
 
   @override
   State<TestsListingScreen> createState() => _TestsListingScreenState();
@@ -116,8 +116,8 @@ class _TestsListingScreenState extends State<TestsListingScreen> {
             margin: const EdgeInsets.only(right: 16),
             child: Stack(
               children: [
-                IconButton(
-                  icon: const Icon(Icons.shopping_cart_outlined, color: AppColors.primaryBlue),
+                const IconButton(
+                  icon: Icon(Icons.shopping_cart_outlined, color: AppColors.primaryBlue),
                   onPressed: null,
                 ),
                 if (widget.cartItems.isNotEmpty)
@@ -233,19 +233,19 @@ class _TestsListingScreenState extends State<TestsListingScreen> {
                         Row(
                           children: [
                             // Report Time
-                            Expanded(
+                            const Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Row(
                                     children: [
-                                      const Icon(
+                                      Icon(
                                         Icons.access_time,
                                         size: 16,
                                         color: Colors.grey,
                                       ),
-                                      const SizedBox(width: 4),
-                                      const Text(
+                                      SizedBox(width: 4),
+                                      Text(
                                         'Reports within',
                                         style: TextStyle(
                                           fontSize: 12,
@@ -254,8 +254,8 @@ class _TestsListingScreenState extends State<TestsListingScreen> {
                                       ),
                                     ],
                                   ),
-                                  const SizedBox(height: 2),
-                                  const Padding(
+                                  SizedBox(height: 2),
+                                  Padding(
                                     padding: EdgeInsets.only(left: 20),
                                     child: Text(
                                       '6 Hrs',

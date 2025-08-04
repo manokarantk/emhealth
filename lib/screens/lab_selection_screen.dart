@@ -11,12 +11,12 @@ class LabSelectionScreen extends StatefulWidget {
   final Map<String, dynamic> cartData;
 
   const LabSelectionScreen({
-    Key? key,
+    super.key,
     required this.cartItems,
     required this.testPrices,
     required this.testDiscounts,
     required this.cartData,
-  }) : super(key: key);
+  });
 
   @override
   State<LabSelectionScreen> createState() => _LabSelectionScreenState();
@@ -290,11 +290,11 @@ class _LabSelectionScreenState extends State<LabSelectionScreen> {
                       ),
                       child: Column(
                         children: [
-                          Row(
+                          const Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const Text('4.0'),
-                              const Text('5.0'),
+                              Text('4.0'),
+                              Text('5.0'),
                             ],
                           ),
                           const SizedBox(height: 12),
@@ -343,11 +343,11 @@ class _LabSelectionScreenState extends State<LabSelectionScreen> {
                       ),
                       child: Column(
                         children: [
-                          Row(
+                          const Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const Text('0 km'),
-                              const Text('10 km'),
+                              Text('0 km'),
+                              Text('10 km'),
                             ],
                           ),
                           const SizedBox(height: 12),
@@ -455,7 +455,7 @@ class _LabSelectionScreenState extends State<LabSelectionScreen> {
         ),
         child: Row(
           children: [
-            Icon(
+            const Icon(
               Icons.radio_button_unchecked,
               color: Colors.grey,
               size: 20,
@@ -605,9 +605,9 @@ class _LabSelectionScreenState extends State<LabSelectionScreen> {
                                     color: Colors.orange[400],
                                   ),
                                   const SizedBox(width: 4),
-                                  Text(
+                                  const Text(
                                     '4.5',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 14,
                                       fontWeight: FontWeight.w500,
                                     ),

@@ -10,12 +10,12 @@ class TestsListTab extends StatefulWidget {
   final VoidCallback? onTabActivated;
 
   const TestsListTab({
-    Key? key,
+    super.key,
     required this.cartItems,
     required this.onAddToCart,
     required this.onRemoveFromCart,
     this.onTabActivated,
-  }) : super(key: key);
+  });
 
   @override
   State<TestsListTab> createState() => _TestsListTabState();
@@ -77,7 +77,7 @@ class _TestsListTabState extends State<TestsListTab> {
       
       final maxScroll = _scrollController.position.maxScrollExtent;
       final currentScroll = _scrollController.position.pixels;
-      final delta = 50.0; // Even smaller threshold
+      const delta = 50.0; // Even smaller threshold
       
       // Log every scroll event for debugging
       print('🔄 Scroll Event:');
@@ -262,7 +262,7 @@ class _TestsListTabState extends State<TestsListTab> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
+          const SnackBar(
             content: Text('Network error occurred'),
             backgroundColor: Colors.red,
           ),
@@ -323,7 +323,7 @@ class _TestsListTabState extends State<TestsListTab> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
+          const SnackBar(
             content: Text('Network error occurred'),
             backgroundColor: Colors.red,
           ),

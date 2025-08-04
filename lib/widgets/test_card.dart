@@ -10,7 +10,7 @@ class TestCard extends StatelessWidget {
   final bool isLoading;
 
   const TestCard({
-    Key? key,
+    super.key,
     required this.test,
     required this.isInCart,
     required this.onAddToCart,
@@ -18,7 +18,7 @@ class TestCard extends StatelessWidget {
     this.onAddToCartApi,
     this.onRemoveFromCartApi,
     this.isLoading = false,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -104,15 +104,15 @@ class TestCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
+                const Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.receipt_long, color: Color(0xFF6C7A89), size: 18),
-                    const SizedBox(width: 6),
+                    Icon(Icons.receipt_long, color: Color(0xFF6C7A89), size: 18),
+                    SizedBox(width: 6),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'Reports within',
                           style: TextStyle(
                             color: Color(0xFF6C7A89),
@@ -120,8 +120,8 @@ class TestCard extends StatelessWidget {
                             fontWeight: FontWeight.w500,
                           ),
                         ),
-                        const SizedBox(height: 2),
-                        const Text(
+                        SizedBox(height: 2),
+                        Text(
                           '6 Hrs',
                           style: TextStyle(
                             color: Color(0xFFFF8C32),

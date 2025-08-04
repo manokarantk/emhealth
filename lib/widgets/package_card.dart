@@ -13,7 +13,7 @@ class PackageCard extends StatelessWidget {
   final List<String> testNames;
 
   const PackageCard({
-    Key? key,
+    super.key,
     required this.title,
     required this.discount,
     required this.price,
@@ -23,7 +23,7 @@ class PackageCard extends StatelessWidget {
     required this.onAdd,
     required this.testNames,
     this.width,
-  }) : super(key: key);
+  });
 
   void _showTestNamesSheet(BuildContext context) {
     showModalBottomSheet(
@@ -62,7 +62,7 @@ class PackageCard extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                           decoration: BoxDecoration(
-                            color: Color(0xFFFF8C32),
+                            color: const Color(0xFFFF8C32),
                             borderRadius: BorderRadius.circular(24),
                           ),
                           child: Text(
@@ -212,7 +212,7 @@ class PackageCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
                   decoration: BoxDecoration(
-                    color: Color(0xFFFF8C32),
+                    color: const Color(0xFFFF8C32),
                     borderRadius: BorderRadius.circular(24),
                   ),
                   child: Text(
@@ -234,7 +234,7 @@ class PackageCard extends StatelessWidget {
                 ),
               ],
             ),
-            Divider(height: 16, thickness: 1.1, color: Color(0xFFE0E0E0)),
+            const Divider(height: 16, thickness: 1.1, color: Color(0xFFE0E0E0)),
             // Parameters included (now above the columns)
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
@@ -262,8 +262,8 @@ class PackageCard extends StatelessWidget {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.science, color: Color(0xFF6C7A89), size: 15),
-                          SizedBox(width: 4),
+                          const Icon(Icons.science, color: Color(0xFF6C7A89), size: 15),
+                          const SizedBox(width: 4),
                           Text(
                             'Tests Included',
                             style: TextStyle(
@@ -285,7 +285,7 @@ class PackageCard extends StatelessWidget {
                               fontSize: 20,
                             ),
                           ),
-                          SizedBox(width: 4),
+                          const SizedBox(width: 4),
                           GestureDetector(
                             onTap: () => _showTestNamesSheet(context),
                             child: const Icon(Icons.info_outline, color: Color(0xFF6C7A89), size: 16),
@@ -298,18 +298,18 @@ class PackageCard extends StatelessWidget {
                 Container(
                   width: 1.2,
                   height: 28,
-                  color: Color(0xFFE0E0E0),
+                  color: const Color(0xFFE0E0E0),
                 ),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Row(
+                      const Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(Icons.receipt_long, color: Color(0xFF6C7A89), size: 15),
-                          const SizedBox(width: 4),
-                          const Text(
+                          Icon(Icons.receipt_long, color: Color(0xFF6C7A89), size: 15),
+                          SizedBox(width: 4),
+                          Text(
                             'Reports Within',
                             style: TextStyle(
                               color: Color(0xFF6C7A89),
@@ -351,7 +351,7 @@ class PackageTestCard extends StatelessWidget {
   final bool isLoading;
 
   const PackageTestCard({
-    Key? key,
+    super.key,
     required this.package,
     required this.isInCart,
     required this.onAddToCart,
@@ -359,7 +359,7 @@ class PackageTestCard extends StatelessWidget {
     this.onAddToCartApi,
     this.onRemoveFromCartApi,
     this.isLoading = false,
-  }) : super(key: key);
+  });
 
   String _formatPrice(dynamic price) {
     if (price == null) return '0';
@@ -468,7 +468,7 @@ class PackageTestCard extends StatelessWidget {
                         children: [
                             Row(
                               children: [
-                                Icon(Icons.star, color: Colors.amber, size: 12),
+                                const Icon(Icons.star, color: Colors.amber, size: 12),
                                 const SizedBox(width: 2),
                                 Text(
                                   (package['rating'] ?? package['organization']?['rating'] ?? '0').toString(),
@@ -896,7 +896,7 @@ class _OrganizationSelectionSheetState extends State<_OrganizationSelectionSheet
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(Icons.error_outline, color: Colors.red, size: 48),
+                              const Icon(Icons.error_outline, color: Colors.red, size: 48),
                               const SizedBox(height: 16),
                               Text(
                                 errorMessage!,

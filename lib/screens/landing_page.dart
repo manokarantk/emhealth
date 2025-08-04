@@ -763,22 +763,22 @@ class _HomeTabState extends State<HomeTab> {
                   children: [
                           // Service Grid Section
                     const SizedBox(height: 18),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16.0),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           ServiceGridSection(),
-                          const SizedBox(height: 24),
+                          SizedBox(height: 24),
                         ],
                       ),
                     ),
                     // OfferBannerCarousel outside the horizontal padding
-                    OfferBannerCarousel(),
+                    const OfferBannerCarousel(),
                     const SizedBox(height: 24),
                           // Stats Section
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                          const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 16.0),
                             child: StatsInfoSection(),
                           ),
                           const SizedBox(height: 24),
@@ -798,7 +798,7 @@ class _HomeTabState extends State<HomeTab> {
                           ),
                           TextButton(
                             onPressed: () {},
-                            style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: Size(40, 30)),
+                            style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(40, 30)),
                                   child: const Text('View All', style: TextStyle(color: Color(0xFF3B5BFE), fontWeight: FontWeight.w600)),
                           ),
                         ],
@@ -823,7 +823,7 @@ class _HomeTabState extends State<HomeTab> {
                           ),
                           TextButton(
                             onPressed: () {},
-                            style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: Size(40, 30)),
+                            style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(40, 30)),
                                   child: const Text('View all'),
                           ),
                         ],
@@ -832,9 +832,9 @@ class _HomeTabState extends State<HomeTab> {
                           _TestPackagesCarousel(),
                     const SizedBox(height: 24),
                     // For Women Care Section
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                      child: const Text(
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16.0),
+                      child: Text(
                         'For Women Care',
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
@@ -844,9 +844,9 @@ class _HomeTabState extends State<HomeTab> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    _WomenCareGrid(),
+                    const _WomenCareGrid(),
                     const SizedBox(height: 24),
-                    _HelpBookingCard(),
+                    const _HelpBookingCard(),
                     const SizedBox(height: 24),
                   ],
                 ),
@@ -936,12 +936,12 @@ class _HomeTabState extends State<HomeTab> {
               ),
               const SizedBox(height: 6),
               // Location (mock)
-              Row(
+              const Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.location_on, size: 13, color: AppColors.grey),
-                  const SizedBox(width: 2),
-                  const Text(
+                  Icon(Icons.location_on, size: 13, color: AppColors.grey),
+                  SizedBox(width: 2),
+                  Text(
                     'Pune',
                     style: TextStyle(fontSize: 11, color: AppColors.grey),
                   ),
@@ -1405,7 +1405,7 @@ class _TestsTabState extends State<TestsTab> with SingleTickerProviderStateMixin
                                             ),
                                             child: Text(
                                               category,
-                                              style: TextStyle(
+                                              style: const TextStyle(
                                                 fontSize: 11,
                                                 color: AppColors.primaryBlue,
                                                 fontWeight: FontWeight.w500,
@@ -1479,11 +1479,11 @@ class _TestsTabState extends State<TestsTab> with SingleTickerProviderStateMixin
                       ),
                       child: Column(
                         children: [
-                          Row(
+                          const Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const Text('₹0'),
-                              const Text('₹5000'),
+                              Text('₹0'),
+                              Text('₹5000'),
                             ],
                           ),
                           const SizedBox(height: 12),
@@ -1532,11 +1532,11 @@ class _TestsTabState extends State<TestsTab> with SingleTickerProviderStateMixin
                       ),
                       child: Column(
                         children: [
-                          Row(
+                          const Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const Text('0 km'),
-                              const Text('50 km'),
+                              Text('0 km'),
+                              Text('50 km'),
                             ],
                           ),
                           const SizedBox(height: 12),
@@ -1793,11 +1793,11 @@ class _TestsTabState extends State<TestsTab> with SingleTickerProviderStateMixin
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                  const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
                     child: Row(
                       children: [
-                        const Expanded(
+                        Expanded(
                           child: Text(
                             'Health Tests & Packages',
                             textAlign: TextAlign.center,
@@ -2329,7 +2329,7 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.error_outline, color: Colors.red, size: 48),
+            const Icon(Icons.error_outline, color: Colors.red, size: 48),
             const SizedBox(height: 16),
             Text(
               errorMessageUpcoming!,
@@ -2379,7 +2379,7 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.error_outline, color: Colors.red, size: 48),
+            const Icon(Icons.error_outline, color: Colors.red, size: 48),
             const SizedBox(height: 16),
             Text(
               errorMessagePast!,
@@ -2499,7 +2499,7 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
                   'Date',
                   order['appointment_datetime'] != null
                       ? DateTime.tryParse(order['appointment_datetime'].toString()) != null
-                          ? "${DateTime.parse(order['appointment_datetime'].toString()).toLocal().toString().split(' ')[0]}"
+                          ? DateTime.parse(order['appointment_datetime'].toString()).toLocal().toString().split(' ')[0]
                           : order['appointment_datetime'].toString()
                       : 'N/A',
                 ),
@@ -2507,7 +2507,7 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
               Expanded(
                 child: _buildDetailItem(Icons.access_time, 'Time', order['appointment_datetime'] != null
                       ? DateTime.tryParse(order['appointment_datetime'].toString()) != null
-                          ? "${DateTime.parse(order['appointment_datetime'].toString()).toLocal().toString().split(' ')[1].substring(0, 5)}"
+                          ? DateTime.parse(order['appointment_datetime'].toString()).toLocal().toString().split(' ')[1].substring(0, 5)
                           : order['appointment_datetime'].toString()
                       : 'N/A'),
               ),
@@ -2641,7 +2641,7 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
             ),
                 child: const Text(
                   'Completed',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                     color: Colors.green,
@@ -2808,7 +2808,7 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
                     width: 1,
                   ),
                 ),
-                child: Row(
+                child: const Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
@@ -2816,7 +2816,7 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
                       size: 16,
                       color: AppColors.primaryBlue,
                     ),
-                    const SizedBox(width: 8),
+                    SizedBox(width: 8),
                     Text(
                       'Book your first test to see it here',
                       style: TextStyle(
@@ -2954,6 +2954,11 @@ class _ProfileTabState extends State<ProfileTab> {
   Map<String, dynamic>? walletData;
   bool isLoadingWallet = true;
   String? walletErrorMessage;
+  
+  // Referral stats state
+  Map<String, dynamic>? referralStats;
+  bool isLoadingReferralStats = true;
+  String? referralStatsErrorMessage;
 
   final List<Map<String, dynamic>> walletTransactions = [
     {
@@ -2987,6 +2992,7 @@ class _ProfileTabState extends State<ProfileTab> {
     super.initState();
     _loadUserProfile();
     _loadWalletData();
+    _loadReferralStats();
   }
 
   Future<void> _loadUserProfile() async {
@@ -3045,6 +3051,147 @@ class _ProfileTabState extends State<ProfileTab> {
         isLoadingWallet = false;
       });
     }
+  }
+
+  Future<void> _loadReferralStats() async {
+    try {
+      setState(() {
+        isLoadingReferralStats = true;
+        referralStatsErrorMessage = null;
+      });
+
+      final apiService = ApiService();
+      final result = await apiService.getReferralStats(context);
+
+      if (result['success'] && mounted) {
+        setState(() {
+          referralStats = result['data'];
+          isLoadingReferralStats = false;
+        });
+      } else {
+        setState(() {
+          referralStatsErrorMessage = result['message'] ?? 'Failed to load referral stats';
+          isLoadingReferralStats = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        referralStatsErrorMessage = 'Network error occurred';
+        isLoadingReferralStats = false;
+      });
+    }
+  }
+
+  void _shareReferralLink() {
+    final referralLink = referralStats?['referral_link'] ?? 'https://yourapp.com/referral';
+    final referralCode = referralStats?['user_info']?['referral_code'] ?? '';
+    
+    // Show a dialog with the referral information
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.share, color: Color(0xFFE74C3C)),
+              SizedBox(width: 8),
+              Text('Share Referral Link'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Share your referral link with friends and earn rewards!',
+                style: TextStyle(fontSize: 16),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey[300]!),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Your Referral Code:',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      referralCode,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFFE74C3C),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Referral Link:',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      referralLink,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Colors.black87,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Earn ₹${referralStats?['bonus_info']?['referral_bonus'] ?? '25'} for each successful referral!',
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: Colors.green,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                // Here you can implement actual sharing functionality
+                // For now, just close the dialog
+                Navigator.of(context).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Sharing functionality will be implemented'),
+                    backgroundColor: Colors.orange,
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFE74C3C),
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Share'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   void _showAddMoneyBottomSheet(BuildContext context) {
@@ -3276,6 +3423,51 @@ class _ProfileTabState extends State<ProfileTab> {
                   ),
                 ),
               
+              // Referral stats error message
+              if (referralStatsErrorMessage != null)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Colors.red.withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.error_outline,
+                        color: Colors.red[600],
+                        size: 20,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          referralStatsErrorMessage!,
+                          style: TextStyle(
+                            color: Colors.red[600],
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: _loadReferralStats,
+                        child: const Text(
+                          'Retry',
+                          style: TextStyle(
+                            color: Colors.red,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              
               // Wallet Section
                     Container(
                 padding: const EdgeInsets.all(20),
@@ -3453,14 +3645,14 @@ class _ProfileTabState extends State<ProfileTab> {
               // Referral Program Section
               Container(
                 padding: const EdgeInsets.all(20),
-                                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [Color(0xFFE74C3C), Color(0xFFFF6B6B)],
-                    ),
-                    borderRadius: BorderRadius.circular(16),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFFE74C3C), Color(0xFFFF6B6B)],
                   ),
+                  borderRadius: BorderRadius.circular(16),
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -3479,20 +3671,20 @@ class _ProfileTabState extends State<ProfileTab> {
                           ),
                         ),
                         const SizedBox(width: 12),
-                    const Text(
+                        const Text(
                           'Refer & Earn',
-                      style: TextStyle(
+                          style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
                             color: Colors.white,
-                      ),
+                          ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 16),
-                    const Text(
-                      'Invite friends and earn ₹100 for each successful referral',
-                      style: TextStyle(
+                    Text(
+                      'Invite friends and earn ₹${referralStats?['bonus_info']?['referral_bonus'] ?? '25'} for each successful referral',
+                      style: const TextStyle(
                         fontSize: 14,
                         color: Colors.white70,
                       ),
@@ -3512,14 +3704,24 @@ class _ProfileTabState extends State<ProfileTab> {
                                 ),
                               ),
                               const SizedBox(height: 4),
-                              const Text(
-                                '8',
-                                style: TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
+                              if (isLoadingReferralStats)
+                                const SizedBox(
+                                  width: 40,
+                                  height: 20,
+                                  child: LinearProgressIndicator(
+                                    backgroundColor: Colors.white30,
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  ),
+                                )
+                              else
+                                Text(
+                                  '${referralStats?['referral_stats']?['total_referrals'] ?? '0'}',
+                                  style: const TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
                                 ),
-                              ),
                             ],
                           ),
                         ),
@@ -3535,24 +3737,34 @@ class _ProfileTabState extends State<ProfileTab> {
                                 ),
                               ),
                               const SizedBox(height: 4),
-                              const Text(
-                                '₹800',
-                                style: TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
+                              if (isLoadingReferralStats)
+                                const SizedBox(
+                                  width: 40,
+                                  height: 20,
+                                  child: LinearProgressIndicator(
+                                    backgroundColor: Colors.white30,
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  ),
+                                )
+                              else
+                                Text(
+                                  '₹${referralStats?['referral_stats']?['total_earnings'] ?? '0'}',
+                                  style: const TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
                                 ),
-                              ),
                             ],
                           ),
                         ),
-                    ElevatedButton(
-                      onPressed: () {},
-                      style: ElevatedButton.styleFrom(
+                        ElevatedButton(
+                          onPressed: () => _shareReferralLink(),
+                          style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.white,
                             foregroundColor: const Color(0xFFE74C3C),
                             elevation: 0,
-                        shape: RoundedRectangleBorder(
+                            shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
@@ -3610,16 +3822,16 @@ class _ProfileTabState extends State<ProfileTab> {
                   color: Colors.white.withOpacity(0.7),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Row(
+                child: const Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.info_outline,
                       color: Color(0xFF7F8C8D),
                       size: 16,
                     ),
-                    const SizedBox(width: 8),
-                    const Text(
+                    SizedBox(width: 8),
+                    Text(
                       'App Version 1.0.0',
                       style: TextStyle(
                         color: Color(0xFF7F8C8D),
@@ -3817,22 +4029,22 @@ class ServiceGridSection extends StatelessWidget {
     final services = [
       {
         'icon': Icons.thermostat,
-        'color': Color(0xFFE74C3C),
+        'color': const Color(0xFFE74C3C),
         'label': 'Blood Tests and Scans',
       },
       {
         'icon': Icons.medical_services,
-        'color': Color(0xFF2980F2),
+        'color': const Color(0xFF2980F2),
         'label': 'Master Health Checkup @ Home',
       },
       {
         'icon': Icons.person,
-        'color': Color(0xFF27AE60),
+        'color': const Color(0xFF27AE60),
         'label': 'Doctor, Dietitian & Physio Consultation',
       },
       {
         'icon': Icons.description,
-        'color': Color(0xFFF2994A),
+        'color': const Color(0xFFF2994A),
         'label': 'View Reports',
       },
     ];
@@ -3897,14 +4109,14 @@ class ServiceGridSection extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Color(0xFF4CAF50).withOpacity(0.6), width: 1.5),
+                  border: Border.all(color: const Color(0xFF4CAF50).withOpacity(0.6), width: 1.5),
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   child: Row(
                     children: [
                       Icon(Icons.chat_bubble, color: Color(0xFF25D366), size: 24),
-                      const SizedBox(width: 12),
+                      SizedBox(width: 12),
                       Expanded(
                         child: Text(
                           'Book via WhatsApp',
@@ -3928,12 +4140,12 @@ class ServiceGridSection extends StatelessWidget {
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: AppColors.primaryBlue.withOpacity(0.6), width: 1.5),
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   child: Row(
                     children: [
                       Icon(Icons.assignment, color: AppColors.primaryBlue, size: 24),
-                      const SizedBox(width: 12),
+                      SizedBox(width: 12),
                       Expanded(
                         child: Text(
                           'Book with Dr prescription',
@@ -3967,18 +4179,18 @@ class WhatsAppBanner extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Color(0xFF4CAF50), width: 2),
+        border: Border.all(color: const Color(0xFF4CAF50), width: 2),
       ),
-      child: Row(
+      child: const Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // WhatsApp icon
-          const Icon(Icons.chat_bubble, color: Color(0xFF25D366), size: 32),
-          const SizedBox(width: 14),
+          Icon(Icons.chat_bubble, color: Color(0xFF25D366), size: 32),
+          SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
+              children: [
                 Text(
                   'Book Appointment via WhatsApp',
                   style: TextStyle(
@@ -4078,8 +4290,8 @@ class StatsInfoSection extends StatelessWidget {
                 Container(
                   width: 40,
                   height: 40,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF176B5A),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF176B5A),
                     shape: BoxShape.circle,
                   ),
                   child: stat['icon'] == null
@@ -4412,7 +4624,7 @@ class _TestPackagesCarouselState extends State<_TestPackagesCarousel> {
       final discounted = base - (base * discount / 100);
       return '₹${discounted.toStringAsFixed(0)}';
     } catch (e) {
-      return '₹${basePrice}';
+      return '₹$basePrice';
     }
   }
 
@@ -4708,7 +4920,7 @@ class _DiagnosticsTestCard extends StatelessWidget {
                     fontWeight: FontWeight.w500,
                   ),
                 ),
-                SizedBox(width: 4),
+                const SizedBox(width: 4),
                 Text(
                   reportTime,
                   style: const TextStyle(
@@ -4720,7 +4932,7 @@ class _DiagnosticsTestCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 10),
-            Divider(height: 18, thickness: 1.1, color: Color(0xFFE0E0E0)),
+            const Divider(height: 18, thickness: 1.1, color: Color(0xFFE0E0E0)),
             Row(
               children: [
                 const Text(
@@ -4732,7 +4944,7 @@ class _DiagnosticsTestCard extends StatelessWidget {
                     fontSize: 14,
                   ),
                 ),
-                SizedBox(width: 6),
+                const SizedBox(width: 6),
                 Text(
                   alsoKnownAs,
                   style: const TextStyle(
@@ -4751,7 +4963,7 @@ class _DiagnosticsTestCard extends StatelessWidget {
 } 
 
 class _WomenCareGrid extends StatelessWidget {
-  const _WomenCareGrid({Key? key}) : super(key: key);
+  const _WomenCareGrid({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -4835,7 +5047,7 @@ class _WomenCareGrid extends StatelessWidget {
 } 
 
 class _HelpBookingCard extends StatelessWidget {
-  const _HelpBookingCard({Key? key}) : super(key: key);
+  const _HelpBookingCard({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -4855,11 +5067,11 @@ class _HelpBookingCard extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Expanded(
+            const Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
-                children: const [
+                children: [
                   Text(
                     'Need help with booking your test?',
                     style: TextStyle(
@@ -4893,9 +5105,9 @@ class _HelpBookingCard extends StatelessWidget {
                 ],
               ),
               padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
-              child: Row(
+              child: const Row(
                 mainAxisSize: MainAxisSize.min,
-                children: const [
+                children: [
                   Icon(Icons.call, color: Color(0xFF1976D2), size: 20),
                   SizedBox(width: 8),
                   Text(

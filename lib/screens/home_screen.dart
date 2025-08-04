@@ -91,7 +91,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               color: AppColors.primaryBlue.withOpacity(0.1),
                               shape: BoxShape.circle,
                             ),
-                            child: Icon(
+                            child: const Icon(
                               Icons.health_and_safety,
                               size: 60,
                               color: AppColors.primaryBlue,
@@ -119,7 +119,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           ),
                           textAlign: TextAlign.center,
                         ),
-                        SizedBox(height: 24),
+                        const SizedBox(height: 24),
                       ],
                     ),
                   ),

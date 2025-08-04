@@ -263,32 +263,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  // Register Now link
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Text(
-                          "Don't have account? ",
-                          style: TextStyle(fontSize: 15, color: AppColors.grey),
-                        ),
-                        GestureDetector(
-                          onTap: () {},
-                          child: const Text(
-                            'Register Now',
-                            style: TextStyle(
-                              fontSize: 15,
-                              color: AppColors.primaryBlue,
-                              fontWeight: FontWeight.bold,
-                              decoration: TextDecoration.underline,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+
                   const Spacer(),
                 ],
               ),
