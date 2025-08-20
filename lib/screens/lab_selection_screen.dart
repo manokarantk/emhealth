@@ -3,12 +3,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/colors.dart';
 import '../services/api_service.dart';
 import 'checkout_screen.dart';
+import 'lab_wise_summary_screen.dart';
 
 class LabSelectionScreen extends StatefulWidget {
   final Set<String> cartItems;
   final Map<String, double> testPrices;
   final Map<String, String> testDiscounts;
   final Map<String, dynamic> cartData;
+  final VoidCallback? onCartChanged; // Callback to notify parent of cart changes
 
   const LabSelectionScreen({
     super.key,
@@ -16,6 +18,7 @@ class LabSelectionScreen extends StatefulWidget {
     required this.testPrices,
     required this.testDiscounts,
     required this.cartData,
+    this.onCartChanged, // Optional callback
   });
 
   @override
@@ -26,6 +29,27 @@ class _LabSelectionScreenState extends State<LabSelectionScreen> {
   String? selectedLab;
   bool isLoading = true;
   List<Map<String, dynamic>> labs = [];
+  
+  // Helper method to format discount value (remove decimal points)
+  String _formatDiscount(dynamic discountValue) {
+    if (discountValue == null) return '0';
+    String formatted = discountValue.toString();
+    if (formatted.contains('.')) {
+      // Remove all decimal points and trailing zeros
+      double? number = double.tryParse(formatted);
+      if (number != null) {
+        formatted = number.toInt().toString();
+      }
+    }
+    return formatted;
+  }
+
+  // Helper method to check if discount should be shown
+  bool _shouldShowDiscount(dynamic discountValue) {
+    if (discountValue == null || discountValue.toString().isEmpty) return false;
+    double? number = double.tryParse(discountValue.toString());
+    return number != null && number > 0;
+  }
   
   @override
   void initState() {
@@ -56,8 +80,6 @@ class _LabSelectionScreenState extends State<LabSelectionScreen> {
     
     await _loadLabs();
   }
-  
-
 
   Future<void> _loadLabs() async {
     try {
@@ -70,9 +92,9 @@ class _LabSelectionScreenState extends State<LabSelectionScreen> {
       print('Cart items: ${widget.cartItems}');
       print('Cart items length: ${widget.cartItems.length}');
       
-      // Extract test IDs and package IDs from cart data
-      final List<String> testIds = [];
-      final List<String> packageIds = [];
+      // Extract SELECTED labs from cart data instead of getting all available labs
+      final Map<String, Map<String, dynamic>> selectedLabs = {};
+      final List<Map<String, dynamic>> cartServices = [];
       
       if (widget.cartData.isNotEmpty && widget.cartData['items'] != null) {
         final items = List<Map<String, dynamic>>.from(widget.cartData['items']);
@@ -81,27 +103,45 @@ class _LabSelectionScreenState extends State<LabSelectionScreen> {
         for (final item in items) {
           print('Processing cart item: $item');
           
-          // Extract test ID from cart summary
-          String? testId = item['lab_test_id']?.toString();
-          
-          // Extract package ID from cart summary
-          String? packageId = item['lab_package_id']?.toString();
-          
-          // Also check for test name for debugging
+          // Extract SELECTED lab information
+          String? labId = item['lab_id']?.toString();
+          String? labName = item['lab_name']?.toString();
           String? testName = item['test_name']?.toString();
+          String? price = item['price']?.toString();
+          String? discountedAmount = item['discounted_amount']?.toString();
+          String? discountValue = item['discount_value']?.toString();
           
-          print('Extracted - Test ID: $testId, Package ID: $packageId, Test Name: $testName');
+          print('Extracted - Lab ID: $labId, Lab Name: $labName, Test: $testName');
           
-          if (testId != null && testId.isNotEmpty) {
-            testIds.add(testId);
-            print('✅ Added test ID: $testId for test: $testName');
+          if (labId != null && labId.isNotEmpty && labName != null && labName.isNotEmpty) {
+            // Initialize lab if not already added
+            if (!selectedLabs.containsKey(labId)) {
+              selectedLabs[labId] = {
+                'id': labId,
+                'name': labName,
+                'services': <Map<String, dynamic>>[],
+              };
+              print('✅ Added selected lab: $labName (ID: $labId)');
+            }
+            
+            // Add service/test to this lab
+            final service = {
+              'id': item['id']?.toString() ?? '',
+              'testname': testName ?? '',
+              'name': testName ?? '',
+              'baseprice': price ?? '0',
+              'discountedprice': discountedAmount ?? price ?? '0',
+              'discountvalue': discountValue ?? '0',
+              'lab_test_id': item['lab_test_id']?.toString() ?? '',
+              'lab_package_id': item['lab_package_id']?.toString() ?? '',
+            };
+            
+            selectedLabs[labId]!['services'].add(service);
+            cartServices.add(service);
+            print('✅ Added service to lab $labName: $testName');
           } else {
-            print('❌ No valid test ID found for item: $item');
-          }
-          
-          if (packageId != null && packageId.isNotEmpty) {
-            packageIds.add(packageId);
-            print('✅ Added package ID: $packageId');
+            print('❌ No lab information found for item: $testName');
+            print('This item may not have been assigned a lab yet');
           }
         }
       } else {
@@ -110,70 +150,142 @@ class _LabSelectionScreenState extends State<LabSelectionScreen> {
       }
       
       print('📊 SUMMARY:');
-      print('Final test IDs to send to API: $testIds');
-      print('Final package IDs to send to API: $packageIds');
+      print('Selected labs from cart: ${selectedLabs.keys.length}');
+      print('Total cart services: ${cartServices.length}');
       print('Total items in cart: ${widget.cartItems.length}');
-      print('Total test IDs extracted: ${testIds.length}');
-      print('Total package IDs extracted: ${packageIds.length}');
-      print('Cart item names: ${widget.cartItems.toList()}');
+      print('Selected labs: ${selectedLabs.keys.map((id) => selectedLabs[id]!['name']).toList()}');
       
-      // Verify that we have test IDs for all cart items
-      if (testIds.isEmpty && widget.cartItems.isNotEmpty) {
-        print('⚠️ WARNING: No test IDs extracted but cart has items!');
-        print('This might indicate a mismatch between cart data structure and expected format.');
-      }
+      // Check if there are any individual tests in cart
+      bool hasIndividualTests = false;
+      int testCount = 0;
+      int packageCount = 0;
       
-      // If no test IDs found from cart items, try to get them from test names
-      if (testIds.isEmpty && widget.cartItems.isNotEmpty) {
-        print('No test IDs found in cart items, using test names: ${widget.cartItems}');
-        // TODO: Implement proper mapping from test names to test IDs
-        // For now, we'll skip the API call if no valid test IDs are found
-        print('No valid test IDs found, skipping lab providers API call');
-        setState(() {
-          isLoading = false;
-          labs = [];
-        });
-        return;
-      }
-      
-      // Check if we have fallback test IDs (which won't work with real API)
-      final hasFallbackIds = testIds.any((id) => id.startsWith('fallback_'));
-      if (hasFallbackIds) {
-        print('⚠️ WARNING: Found fallback test IDs, these won\'t work with real API');
-        print('Fallback test IDs: $testIds');
-        print('This usually means the cart API failed and we\'re using local storage');
-        print('Skipping lab providers API call for fallback IDs');
-        setState(() {
-          isLoading = false;
-          labs = [];
-        });
-        return;
-      }
-      
-      final apiService = ApiService();
-      final result = await apiService.getOrganizationsProviders(
-        testIds: testIds,
-        packageIds: packageIds,
-      );
-      print(result);
-      if (result['success'] == true && mounted) {
-        setState(() {
-          try {
-            labs = List<Map<String, dynamic>>.from(result['data']['organizations'] ?? []);
-          } catch (e) {
-            labs = [];
-            print(e);
+      if (widget.cartData.isNotEmpty && widget.cartData['items'] != null) {
+        final items = List<Map<String, dynamic>>.from(widget.cartData['items']);
+        for (var item in items) {
+          if (item['lab_test_id'] != null && item['lab_test_id'].toString().isNotEmpty) {
+            testCount++;
+            hasIndividualTests = true;
           }
-          isLoading = false;
-        });
-      } else {
-        if (mounted) {
+          if (item['lab_package_id'] != null && item['lab_package_id'].toString().isNotEmpty) {
+            packageCount++;
+          }
+        }
+      }
+      
+      print('🔍 Cart analysis: $testCount tests, $packageCount packages');
+      print('🔍 Has individual tests: $hasIndividualTests');
+      
+      // RULE: If there are any individual tests, always show lab selection screen
+      if (hasIndividualTests) {
+        print('✅ Individual tests detected - must show lab selection screen');
+        if (selectedLabs.isEmpty) {
+          print('⚠️ Tests have no labs assigned - loading available labs');
+          await _loadAvailableLabsForSelection();
+        } else {
+          print('✅ Tests have some labs assigned - showing all labs for review/assignment');
+          final allLabsForSelection = await _getAvailableLabsForSelection();
           setState(() {
+            labs = allLabsForSelection;
             isLoading = false;
           });
-          // Load fallback data if API fails
-         // _loadFallbackLabs();
         }
+        return;
+      }
+      
+      // If NO individual tests, proceed with package-only logic
+      print('🔍 No individual tests - proceeding with package-only navigation logic');
+      
+      // Check if all packages belong to a single lab - if so, go directly to checkout
+      if (selectedLabs.length == 1) {
+        print('✅ All packages belong to single lab - navigating directly to checkout');
+        
+        final singleLab = selectedLabs.values.first;
+        final labId = singleLab['id']?.toString() ?? '';
+        final labName = singleLab['name']?.toString() ?? 'Unknown Lab';
+        final services = List<Map<String, dynamic>>.from(singleLab['services'] ?? []);
+        
+        // Calculate total price and discount for the single lab
+        double totalOriginalPrice = 0.0;
+        double totalDiscountedPrice = 0.0;
+        String discountText = '';
+        
+        for (final service in services) {
+          final basePrice = double.tryParse(service['baseprice']?.toString() ?? '0') ?? 0.0;
+          final discountedPrice = double.tryParse(service['discountedprice']?.toString() ?? '0') ?? 0.0;
+          final discountValue = service['discountvalue']?.toString() ?? '0';
+          
+          totalOriginalPrice += basePrice;
+          totalDiscountedPrice += discountedPrice;
+          
+          if (_shouldShowDiscount(discountValue) && discountText.isEmpty) {
+            discountText = '${_formatDiscount(discountValue)}% OFF';
+          }
+        }
+        
+        // Navigate directly to checkout
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => CheckoutScreen(
+                cartItems: widget.cartItems,
+                testPrices: widget.testPrices,
+                testDiscounts: widget.testDiscounts,
+                selectedLab: labName,
+                labOriginalPrice: totalOriginalPrice,
+                labDiscountedPrice: totalDiscountedPrice,
+                labDiscount: discountText,
+                organizationId: labId,
+                cartData: widget.cartData,
+                onRemoveFromCart: (testName) {
+                  // Notify parent that cart has changed
+                  if (widget.onCartChanged != null) {
+                    print('🔄 Checkout removed $testName - triggering parent cart refresh');
+                    widget.onCartChanged!();
+                  }
+                },
+                onCartCleared: () {
+                  // Notify parent that entire cart has been cleared
+                  if (widget.onCartChanged != null) {
+                    print('🔄 Cart cleared - triggering parent cart refresh');
+                    widget.onCartChanged!();
+                  }
+                },
+              ),
+            ),
+          );
+        }
+        return;
+      }
+      
+      // Check if multiple labs are already assigned - if so, go directly to lab-wise summary
+      if (selectedLabs.length > 1) {
+        print('✅ Multiple labs already assigned - navigating directly to lab-wise summary');
+        
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => LabWiseSummaryScreen(
+                cartItems: widget.cartItems,
+                testPrices: widget.testPrices,
+                testDiscounts: widget.testDiscounts,
+                cartData: widget.cartData,
+                labsData: selectedLabs.values.toList(),
+                onCartChanged: widget.onCartChanged, // Pass callback
+              ),
+            ),
+          );
+        }
+        return;
+      }
+      
+      // For no labs assigned, show lab selection screen
+      if (selectedLabs.isEmpty) {
+        print('⚠️ No selected labs found - need to get available labs for selection');
+        // Load available labs for selection
+        await _loadAvailableLabsForSelection();
       }
     } catch (e) {
       if (mounted) {
@@ -186,7 +298,67 @@ class _LabSelectionScreenState extends State<LabSelectionScreen> {
     }
   }
 
+  Future<void> _loadAvailableLabsForSelection() async {
+    try {
+      final allLabs = await _getAvailableLabsForSelection();
+      if (mounted) {
+        setState(() {
+          labs = allLabs;
+          isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('❌ Error loading available labs: $e');
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+        });
+      }
+    }
+  }
 
+  Future<List<Map<String, dynamic>>> _getAvailableLabsForSelection() async {
+    try {
+      // Extract test IDs and package IDs from cart data for API call
+      final List<String> testIds = [];
+      final List<String> packageIds = [];
+      
+      if (widget.cartData.isNotEmpty && widget.cartData['items'] != null) {
+        final items = List<Map<String, dynamic>>.from(widget.cartData['items']);
+        
+        for (final item in items) {
+          String? testId = item['lab_test_id']?.toString();
+          String? packageId = item['lab_package_id']?.toString();
+          
+          if (testId != null && testId.isNotEmpty) {
+            testIds.add(testId);
+          }
+          if (packageId != null && packageId.isNotEmpty) {
+            packageIds.add(packageId);
+          }
+        }
+      }
+      
+      // Call API to get available labs
+      final apiService = ApiService();
+      final result = await apiService.getOrganizationsProviders(
+        testIds: testIds,
+        packageIds: packageIds,
+      );
+      
+      if (result['success'] == true) {
+        final labsData = List<Map<String, dynamic>>.from(result['data']['organizations'] ?? []);
+        print('✅ Loaded ${labsData.length} available labs for selection');
+        return labsData;
+      } else {
+        print('❌ Failed to load available labs: ${result['message']}');
+        return [];
+      }
+    } catch (e) {
+      print('❌ Error getting available labs: $e');
+      return [];
+    }
+  }
 
   double get totalOriginalPrice {
     return widget.cartItems.fold<double>(
@@ -207,274 +379,6 @@ class _LabSelectionScreenState extends State<LabSelectionScreen> {
     );
   }
 
-  void _showFilterBottomSheet(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.6,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.only(
-            topLeft: Radius.circular(20),
-            topRight: Radius.circular(20),
-          ),
-        ),
-        child: Column(
-          children: [
-            // Handle bar
-            Container(
-              margin: const EdgeInsets.only(top: 12),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey[300],
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            // Header
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Filter Labs',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black,
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                    },
-                    child: const Text(
-                      'Clear All',
-                      style: TextStyle(
-                        color: AppColors.primaryBlue,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Divider(height: 1),
-            // Filter options
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Rating Filter
-                    const Text(
-                      'Minimum Rating',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: Colors.grey[50],
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.grey[200]!),
-                      ),
-                      child: Column(
-                        children: [
-                          const Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text('4.0'),
-                              Text('5.0'),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          SliderTheme(
-                            data: SliderTheme.of(context).copyWith(
-                              activeTrackColor: AppColors.primaryBlue,
-                              inactiveTrackColor: Colors.grey[300],
-                              thumbColor: AppColors.primaryBlue,
-                              overlayColor: AppColors.primaryBlue.withOpacity(0.2),
-                            ),
-                            child: Slider(
-                              value: 4.5,
-                              min: 4.0,
-                              max: 5.0,
-                              divisions: 10,
-                              onChanged: (value) {},
-                            ),
-                          ),
-                          const Text(
-                            'Selected: 4.5★',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 32),
-                    // Distance Filter
-                    const Text(
-                      'Maximum Distance',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: Colors.grey[50],
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.grey[200]!),
-                      ),
-                      child: Column(
-                        children: [
-                          const Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text('0 km'),
-                              Text('10 km'),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          SliderTheme(
-                            data: SliderTheme.of(context).copyWith(
-                              activeTrackColor: AppColors.primaryBlue,
-                              inactiveTrackColor: Colors.grey[300],
-                              thumbColor: AppColors.primaryBlue,
-                              overlayColor: AppColors.primaryBlue.withOpacity(0.2),
-                            ),
-                            child: Slider(
-                              value: 5.0,
-                              min: 0,
-                              max: 10,
-                              divisions: 20,
-                              onChanged: (value) {},
-                            ),
-                          ),
-                          const Text(
-                            'Selected: 0 - 5 km',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 32),
-                    // Delivery Time Filter
-                    const Text(
-                      'Delivery Time',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: Colors.grey[50],
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.grey[200]!),
-                      ),
-                      child: Column(
-                        children: [
-                          _buildDeliveryTimeOption('Same Day', 'same_day'),
-                          const SizedBox(height: 12),
-                          _buildDeliveryTimeOption('Next Day', 'next_day'),
-                          const SizedBox(height: 12),
-                          _buildDeliveryTimeOption('Both', 'both'),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            // Apply button
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.pop(context);
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primaryBlue,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 18),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: const Text(
-                    'Apply Filters',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDeliveryTimeOption(String title, String value) {
-    return InkWell(
-      onTap: () {
-        // TODO: Implement delivery time selection
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.grey[300]!),
-        ),
-        child: Row(
-          children: [
-            const Icon(
-              Icons.radio_button_unchecked,
-              color: Colors.grey,
-              size: 20,
-            ),
-            const SizedBox(width: 12),
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 16,
-                color: Colors.black87,
-                fontWeight: FontWeight.normal,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -487,7 +391,7 @@ class _LabSelectionScreenState extends State<LabSelectionScreen> {
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: const Text(
-          'Select Lab',
+          'Select Lab for Test/Scans',
           style: TextStyle(
             color: Colors.black,
             fontWeight: FontWeight.bold,
@@ -514,238 +418,238 @@ class _LabSelectionScreenState extends State<LabSelectionScreen> {
               padding: const EdgeInsets.all(16),
               itemCount: labs.length,
               itemBuilder: (context, index) {
-          final lab = labs[index];
-          final isSelected = selectedLab == lab['name'];
-          
-          // Extract service data for pricing
-          final services = List<Map<String, dynamic>>.from(lab['services'] ?? []);
-          
-          // Calculate total price and discount
-          double totalOriginalPrice = 0.0;
-          double totalDiscountedPrice = 0.0;
-          String discountText = '';
-          
-          for (final service in services) {
-            final basePrice = double.tryParse(service['baseprice']?.toString() ?? '0') ?? 0.0;
-            final discountedPrice = double.tryParse(service['discountedprice']?.toString() ?? '0') ?? 0.0;
-            final discountValue = service['discountvalue']?.toString() ?? '0';
-            
-            totalOriginalPrice += basePrice;
-            totalDiscountedPrice += discountedPrice;
-            
-            if (discountValue != '0' && discountValue.isNotEmpty) {
-              discountText = '$discountValue% OFF';
-            }
-          }
-          
-          return Container(
-            margin: const EdgeInsets.only(bottom: 16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: isSelected ? AppColors.primaryBlue : Colors.grey[200]!,
-                width: isSelected ? 2 : 1,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: InkWell(
-              onTap: () {
-                setState(() {
-                  selectedLab = lab['name'];
-                });
-              },
-              borderRadius: BorderRadius.circular(16),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        // Lab Image/Icon
-                        Container(
-                          width: 60,
-                          height: 60,
-                          decoration: BoxDecoration(
-                            color: AppColors.primaryBlue.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Icon(
-                            Icons.local_hospital,
-                            color: AppColors.primaryBlue,
-                            size: 30,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                final lab = labs[index];
+                final isSelected = selectedLab == lab['id']?.toString();
+                
+                // Extract service data for pricing
+                final services = List<Map<String, dynamic>>.from(lab['services'] ?? []);
+                
+                // Calculate total price and discount
+                double totalOriginalPrice = 0.0;
+                double totalDiscountedPrice = 0.0;
+                String discountText = '';
+                
+                for (final service in services) {
+                  final basePrice = double.tryParse(service['baseprice']?.toString() ?? '0') ?? 0.0;
+                  final discountedPrice = double.tryParse(service['discountedprice']?.toString() ?? '0') ?? 0.0;
+                  final discountValue = service['discountvalue']?.toString() ?? '0';
+                  
+                  totalOriginalPrice += basePrice;
+                  totalDiscountedPrice += discountedPrice;
+                  
+                  if (_shouldShowDiscount(discountValue)) {
+                    discountText = '${_formatDiscount(discountValue)}% OFF';
+                  }
+                }
+                
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: isSelected ? AppColors.primaryBlue : Colors.grey[200]!,
+                      width: isSelected ? 2 : 1,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 10,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: InkWell(
+                    onTap: () {
+                      setState(() {
+                        selectedLab = lab['id']?.toString();
+                      });
+                    },
+                    borderRadius: BorderRadius.circular(16),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
                             children: [
-                              Text(
-                                lab['name'] ?? 'Lab',
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.black87,
+                              // Lab Image/Icon
+                              Container(
+                                width: 60,
+                                height: 60,
+                                decoration: BoxDecoration(
+                                  color: AppColors.primaryBlue.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Icon(
+                                  Icons.local_hospital,
+                                  color: AppColors.primaryBlue,
+                                  size: 30,
                                 ),
                               ),
-                              const SizedBox(height: 4),
-                              Row(
-                                children: [
-                                  Icon(
-                                    Icons.star,
-                                    size: 16,
-                                    color: Colors.orange[400],
-                                  ),
-                                  const SizedBox(width: 4),
-                                  const Text(
-                                    '4.5',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w500,
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      lab['name'] ?? 'Lab',
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.black87,
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Icon(
-                                    Icons.location_on,
-                                    size: 16,
-                                    color: Colors.grey[600],
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    'Nearby',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      color: Colors.grey[600],
+                                    const SizedBox(height: 4),
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          Icons.star,
+                                          size: 16,
+                                          color: Colors.orange[400],
+                                        ),
+                                        const SizedBox(width: 4),
+                                        const Text(
+                                          '4.5',
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Icon(
+                                          Icons.location_on,
+                                          size: 16,
+                                          color: Colors.grey[600],
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          'Nearby',
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            color: Colors.grey[600],
+                                          ),
+                                        ),
+                                      ],
                                     ),
+                                  ],
+                                ),
+                              ),
+                              // Radio Button
+                              Container(
+                                width: 20,
+                                height: 20,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: isSelected ? AppColors.primaryBlue : Colors.grey[400]!,
+                                    width: 2,
                                   ),
-                                ],
+                                ),
+                                child: isSelected
+                                    ? Container(
+                                        margin: const EdgeInsets.all(4),
+                                        decoration: const BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: AppColors.primaryBlue,
+                                        ),
+                                      )
+                                    : null,
                               ),
                             ],
                           ),
-                        ),
-                        // Radio Button
-                        Container(
-                          width: 20,
-                          height: 20,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: isSelected ? AppColors.primaryBlue : Colors.grey[400]!,
-                              width: 2,
-                            ),
-                          ),
-                          child: isSelected
-                              ? Container(
-                                  margin: const EdgeInsets.all(4),
-                                  decoration: const BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: AppColors.primaryBlue,
-                                  ),
-                                )
-                              : null,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    // Delivery Time
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.access_time,
-                          size: 16,
-                          color: Colors.grey[600],
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Reports: Same Day',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    // Price Section
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.grey[50],
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                          const SizedBox(height: 12),
+                          // Delivery Time
+                          Row(
                             children: [
+                              Icon(
+                                Icons.access_time,
+                                size: 16,
+                                color: Colors.grey[600],
+                              ),
+                              const SizedBox(width: 4),
                               Text(
-                                'Total Price',
+                                'Reports: Same Day',
                                 style: TextStyle(
-                                  fontSize: 12,
+                                  fontSize: 14,
                                   color: Colors.grey[600],
                                 ),
                               ),
-                              const SizedBox(height: 2),
-                              Row(
-                                children: [
-                                  if (totalOriginalPrice > totalDiscountedPrice)
-                                    Text(
-                                      '₹${totalOriginalPrice.toStringAsFixed(0)}',
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey,
-                                        decoration: TextDecoration.lineThrough,
-                                      ),
-                                    ),
-                                  if (totalOriginalPrice > totalDiscountedPrice)
-                                    const SizedBox(width: 8),
-                                  Text(
-                                    '₹${totalDiscountedPrice.toStringAsFixed(0)}',
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                      color: AppColors.primaryBlue,
-                                    ),
-                                  ),
-                                ],
-                              ),
                             ],
                           ),
-                          if (discountText.isNotEmpty)
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: Colors.green.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                discountText,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.green,
-                                ),
-                              ),
+                          const SizedBox(height: 12),
+                          // Price Section
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.grey[50],
+                              borderRadius: BorderRadius.circular(8),
                             ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Total Price',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey[600],
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Row(
+                                      children: [
+                                        if (totalOriginalPrice > totalDiscountedPrice)
+                                          Text(
+                                            '₹${totalOriginalPrice.toStringAsFixed(0)}',
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.grey,
+                                              decoration: TextDecoration.lineThrough,
+                                            ),
+                                          ),
+                                        if (totalOriginalPrice > totalDiscountedPrice)
+                                          const SizedBox(width: 8),
+                                        Text(
+                                          '₹${totalDiscountedPrice.toStringAsFixed(0)}',
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                            color: AppColors.primaryBlue,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                                if (discountText.isNotEmpty)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: Colors.green.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Text(
+                                      discountText,
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.green,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
                         ],
                       ),
                     ),
-                  ],
-                ),
-              ),
+                  ),
+                );
+              },
             ),
-          );
-        },
-      ),
       bottomNavigationBar: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -767,10 +671,8 @@ class _LabSelectionScreenState extends State<LabSelectionScreen> {
                   });
                   
                   try {
-                    final selectedLabData = labs.firstWhere((lab) => lab['name'] == selectedLab);
+                    final selectedLabData = labs.firstWhere((lab) => lab['id']?.toString() == selectedLab);
                     print('🔄 Selected Lab Data: $selectedLabData');
-                    print('🔄 Lab ID field: ${selectedLabData['id']}');
-                    print('🔄 Lab ID type: ${selectedLabData['id'].runtimeType}');
                     
                     // Extract lab_test_ids from cart data
                     final List<String> labTestIds = [];
@@ -784,63 +686,134 @@ class _LabSelectionScreenState extends State<LabSelectionScreen> {
                       }
                     }
                     
-                    print('🔄 Updating lab for cart items...');
-                    print('Lab test IDs: $labTestIds');
-                    print('Selected lab: $selectedLab');
-                    print('Lab ID: ${selectedLabData['id']}');
-                    
                     // Call API to update lab for cart items
                     final apiService = ApiService();
                     final result = await apiService.updateCartLab(
                       labTestIds: labTestIds,
                       labId: selectedLabData['id']?.toString() ?? '',
-                      labName: selectedLab!,
+                      labName: selectedLabData['name']?.toString() ?? '',
                     );
                     
                     if (result['success']) {
                       print('✅ Lab updated successfully');
                       
-                      // Calculate total price and discount for selected lab
-                      final services = List<Map<String, dynamic>>.from(selectedLabData['services'] ?? []);
-                      double totalOriginalPrice = 0.0;
-                      double totalDiscountedPrice = 0.0;
-                      String discountText = '';
+                      // These totals will be calculated from the updated cart data after lab assignment
                       
-                      for (final service in services) {
-                        final basePrice = double.tryParse(service['baseprice']?.toString() ?? '0') ?? 0.0;
-                        final discountedPrice = double.tryParse(service['discountedprice']?.toString() ?? '0') ?? 0.0;
-                        final discountValue = service['discountvalue']?.toString() ?? '0';
-                        
-                        totalOriginalPrice += basePrice;
-                        totalDiscountedPrice += discountedPrice;
-                        
-                        if (discountValue != '0' && discountValue.isNotEmpty) {
-                          discountText = '$discountValue% OFF';
-                        }
-                      }
-                      
-                      // Navigate to checkout screen
+                      // Navigate based on updated cart state
                       if (mounted) {
-                        print('🔄 Navigating to CheckoutScreen');
-                        print('🔄 Selected Lab: $selectedLab');
-                        print('🔄 Lab Data: $selectedLabData');
-                        print('🔄 Organization ID: ${selectedLabData['id']?.toString() ?? ''}');
+                        print('✅ Lab updated successfully - determining next screen');
                         
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (context) => CheckoutScreen(
-                              cartItems: widget.cartItems,
-                              testPrices: widget.testPrices,
-                              testDiscounts: widget.testDiscounts,
-                              selectedLab: selectedLab!,
-                              labOriginalPrice: totalOriginalPrice,
-                              labDiscountedPrice: totalDiscountedPrice,
-                              labDiscount: discountText,
-                              organizationId: selectedLabData['id']?.toString() ?? '',
-                              cartData: widget.cartData,
-                            ),
-                          ),
-                        );
+                        // Refresh cart data to get updated lab assignments
+                        final apiService = ApiService();
+                        final cartResult = await apiService.getCart();
+                        
+                        if (cartResult['success']) {
+                          final updatedCartData = cartResult['data'];
+                          final items = List<Map<String, dynamic>>.from(updatedCartData['items'] ?? []);
+                          
+                          // Count unique labs in updated cart
+                          final Set<String> uniqueLabIds = {};
+                          final Map<String, Map<String, dynamic>> labsInCart = {};
+                          
+                          for (final item in items) {
+                            String? labId = item['lab_id']?.toString();
+                            String? labName = item['lab_name']?.toString();
+                            
+                            if (labId != null && labId.isNotEmpty) {
+                              uniqueLabIds.add(labId);
+                              if (!labsInCart.containsKey(labId)) {
+                                labsInCart[labId] = {
+                                  'id': labId,
+                                  'name': labName ?? 'Unknown Lab',
+                                  'services': <Map<String, dynamic>>[],
+                                };
+                              }
+                              
+                              // Add service to lab
+                              labsInCart[labId]!['services'].add({
+                                'id': item['id']?.toString() ?? '',
+                                'testname': item['test_name'] ?? '',
+                                'name': item['test_name'] ?? '',
+                                'baseprice': item['price']?.toString() ?? '0',
+                                'discountedprice': item['discounted_amount']?.toString() ?? item['price']?.toString() ?? '0',
+                                'discountvalue': item['discount_value']?.toString() ?? '0',
+                              });
+                            }
+                          }
+                          
+                          print('🔍 Unique labs in updated cart: ${uniqueLabIds.length}');
+                          print('🔍 Lab names: ${labsInCart.values.map((lab) => lab['name']).toList()}');
+                          
+                          // Navigate based on number of labs
+                          if (uniqueLabIds.length == 1) {
+                            // Single lab - go to checkout
+                            print('✅ Single lab in cart - navigating to checkout');
+                            
+                            final singleLab = labsInCart.values.first;
+                            final services = List<Map<String, dynamic>>.from(singleLab['services']);
+                            
+                            // Calculate totals
+                            double totalOriginalPrice = 0.0;
+                            double totalDiscountedPrice = 0.0;
+                            String discountText = '';
+                            
+                            for (final service in services) {
+                              totalOriginalPrice += double.tryParse(service['baseprice'] ?? '0') ?? 0.0;
+                              totalDiscountedPrice += double.tryParse(service['discountedprice'] ?? '0') ?? 0.0;
+                              
+                              final discountValue = service['discountvalue']?.toString() ?? '0';
+                              if (_shouldShowDiscount(discountValue) && discountText.isEmpty) {
+                                discountText = '${_formatDiscount(discountValue)}% OFF';
+                              }
+                            }
+                            
+                            Navigator.of(context).pushReplacement(
+                              MaterialPageRoute(
+                                builder: (context) => CheckoutScreen(
+                                  cartItems: widget.cartItems,
+                                  testPrices: widget.testPrices,
+                                  testDiscounts: widget.testDiscounts,
+                                  selectedLab: singleLab['name'],
+                                  labOriginalPrice: totalOriginalPrice,
+                                  labDiscountedPrice: totalDiscountedPrice,
+                                  labDiscount: discountText,
+                                  organizationId: singleLab['id'],
+                                  cartData: updatedCartData,
+                                  onRemoveFromCart: (testName) {
+                                    // Notify parent that cart has changed
+                                    if (widget.onCartChanged != null) {
+                                      print('🔄 Checkout removed $testName - triggering parent cart refresh');
+                                      widget.onCartChanged!();
+                                    }
+                                  },
+                                  onCartCleared: () {
+                                    // Notify parent that entire cart has been cleared
+                                    if (widget.onCartChanged != null) {
+                                      print('🔄 Cart cleared - triggering parent cart refresh');
+                                      widget.onCartChanged!();
+                                    }
+                                  },
+                                ),
+                              ),
+                            );
+                          } else {
+                            // Multiple labs - go to lab-wise summary
+                            print('✅ Multiple labs in cart - navigating to lab-wise summary');
+                            
+                            Navigator.of(context).pushReplacement(
+                              MaterialPageRoute(
+                                builder: (context) => LabWiseSummaryScreen(
+                                  cartItems: widget.cartItems,
+                                  testPrices: widget.testPrices,
+                                  testDiscounts: widget.testDiscounts,
+                                  cartData: updatedCartData,
+                                  labsData: labsInCart.values.toList(),
+                                  onCartChanged: widget.onCartChanged, // Pass callback
+                                ),
+                              ),
+                            );
+                          }
+                        }
                       }
                     } else {
                       print('❌ Failed to update lab: ${result['message']}');
@@ -854,17 +827,16 @@ class _LabSelectionScreenState extends State<LabSelectionScreen> {
                       }
                     }
                   } catch (e) {
-                    print('❌ Error updating lab: $e');
+                    print('❌ Error during lab selection: $e');
                     if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text('Error updating lab: ${e.toString()}'),
+                          content: Text('Error selecting lab: ${e.toString()}'),
                           backgroundColor: Colors.red,
                         ),
                       );
                     }
                   } finally {
-                    // Clear loading state
                     if (mounted) {
                       setState(() {
                         isLoading = false;
@@ -897,6 +869,53 @@ class _LabSelectionScreenState extends State<LabSelectionScreen> {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
+        ),
+      ),
+    );
+  }
+
+  void _showFilterBottomSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        height: MediaQuery.of(context).size.height * 0.4,
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(top: 12),
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'Filter Labs',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            // Add filter options here
+            const Expanded(
+              child: Center(
+                child: Text(
+                  'Filter options coming soon...',
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import '../constants/colors.dart';
 
 class PackageCard extends StatelessWidget {
   final String title;
   final String discount;
   final String price;
+  final String? originalPrice; // Add original price parameter
   final int parameters;
   final int tests;
   final String reportTime;
@@ -12,11 +14,38 @@ class PackageCard extends StatelessWidget {
   final double? width;
   final List<String> testNames;
 
+  // Helper method to format discount value (remove floating points and handle 0%)
+  String _formatDiscount(String discountValue) {
+    if (discountValue == null || discountValue.isEmpty) return '0';
+    String formatted = discountValue;
+    if (formatted.contains('.')) {
+      // Remove .00, .0, or any decimal part if it's a whole number
+      double? number = double.tryParse(formatted);
+      if (number != null) {
+        if (number == number.toInt()) {
+          formatted = number.toInt().toString();
+        } else {
+          // Remove decimal points for non-whole numbers too
+          formatted = number.toInt().toString();
+        }
+      }
+    }
+    return formatted;
+  }
+
+  // Helper method to check if discount should be shown
+  bool _shouldShowDiscount(String discountValue) {
+    if (discountValue == null || discountValue.isEmpty) return false;
+    double? number = double.tryParse(discountValue);
+    return number != null && number > 0;
+  }
+
   const PackageCard({
     super.key,
     required this.title,
     required this.discount,
     required this.price,
+    this.originalPrice,
     required this.parameters,
     required this.tests,
     required this.reportTime,
@@ -59,21 +88,22 @@ class PackageCard extends StatelessWidget {
                             ),
                           ),
                         ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFF8C32),
-                            borderRadius: BorderRadius.circular(24),
-                          ),
-                          child: Text(
-                            '$discount Off',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
+                        if (_shouldShowDiscount(discount))
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFF8C32),
+                              borderRadius: BorderRadius.circular(24),
+                            ),
+                            child: Text(
+                              '${_formatDiscount(discount)}% Off',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
                             ),
                           ),
-                        ),
                       ],
                     ),
                     const SizedBox(height: 8),
@@ -209,49 +239,65 @@ class PackageCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFF8C32),
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                  child: Text(
-                    '$discount Off',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
+                if (_shouldShowDiscount(discount))
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFF8C32),
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    child: Text(
+                      '${_formatDiscount(discount)}% Off',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
                     ),
                   ),
-                ),
-                Text(
-                  price,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 20,
-                    color: Colors.black,
-                  ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (originalPrice != null && originalPrice != price) ...[
+                      Text(
+                        'Starts from ',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w500,
+                          fontSize: 12,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ],
+                    Text(
+                      price,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 20,
+                        color: Colors.black,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
             const Divider(height: 16, thickness: 1.1, color: Color(0xFFE0E0E0)),
-            // Parameters included (now above the columns)
+            // Free Home collection (now above the columns)
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                const Icon(Icons.check_circle, color: Color(0xFF2ECC71), size: 15),
-                const SizedBox(width: 4),
-                Text(
-                  '$parameters parameters included',
-                  style: const TextStyle(
+                const Icon(Icons.home, color: Color(0xFF2ECC71), size: 14),
+                const SizedBox(width: 3),
+                const Text(
+                  'Free Home collection',
+                  style: TextStyle(
                     color: Color(0xFF2ECC71),
                     fontWeight: FontWeight.bold,
-                    fontSize: 14,
+                    fontSize: 13,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             // Tests included and Report time as two columns, each with two lines
             Row(
               children: [
@@ -365,30 +411,57 @@ class PackageTestCard extends StatelessWidget {
     if (price == null) return '0';
     String priceStr = price.toString();
     if (priceStr.contains('.')) {
-      // Remove .00 if it's exactly .00
-      if (priceStr.endsWith('.00')) {
-        priceStr = priceStr.substring(0, priceStr.length - 3);
+      // Remove all decimal points and trailing zeros
+      double? number = double.tryParse(priceStr);
+      if (number != null) {
+        priceStr = number.toInt().toString();
       }
     }
     return priceStr;
   }
 
-  bool _shouldShowStrikeThrough() {
-    // Check if discount exists and is not zero
-    if (package['discountvalue'] == null || package['discountvalue'] == '0.00') {
-      return false;
+  String _formatDiscount(dynamic discount) {
+    if (discount == null) return '0';
+    String discountStr = discount.toString();
+    if (discountStr.contains('.')) {
+      // Remove .00, .0, or any decimal part if it's a whole number
+      double? number = double.tryParse(discountStr);
+      if (number != null) {
+        if (number == number.toInt()) {
+          discountStr = number.toInt().toString();
+        } else {
+          // Remove decimal points for non-whole numbers too
+          discountStr = number.toInt().toString();
+        }
+      }
+    }
+    return discountStr;
+  }
+
+  // Helper method to check if discount should be shown
+  bool _shouldShowDiscount(dynamic discountValue) {
+    if (discountValue == null || discountValue.toString().isEmpty) return false;
+    double? number = double.tryParse(discountValue.toString());
+    return number != null && number > 0;
+  }
+
+  String _calculateDiscountedPrice() {
+    final basePrice = double.tryParse(package['baseprice']?.toString() ?? '0') ?? 0.0;
+    final discountValue = double.tryParse(package['discountvalue']?.toString() ?? '0') ?? 0.0;
+    
+    if (discountValue > 0) {
+      final discountAmount = (basePrice * discountValue) / 100;
+      final discountedPrice = basePrice - discountAmount;
+      return _formatPrice(discountedPrice.toString());
     }
     
-    // Get base and discounted prices
-    final basePrice = package['baseprice']?.toString() ?? '0';
-    final discountedPrice = package['discountedprice']?.toString() ?? basePrice;
-    
-    // Compare prices (remove .00 for comparison)
-    final formattedBasePrice = _formatPrice(basePrice);
-    final formattedDiscountedPrice = _formatPrice(discountedPrice);
-    
-    // Only show strike-through if prices are different
-    return formattedBasePrice != formattedDiscountedPrice;
+    return _formatPrice(basePrice.toString());
+  }
+
+  bool _shouldShowStrikeThrough() {
+    // Check if discount exists and is not zero
+    final discountValue = double.tryParse(package['discountvalue']?.toString() ?? '0') ?? 0.0;
+    return discountValue > 0;
   }
 
   void _showLabSelectionBottomSheet(BuildContext context) {
@@ -403,6 +476,143 @@ class PackageTestCard extends StatelessWidget {
           package: package,
           onAddToCart: onAddToCart,
           onAddToCartApi: onAddToCartApi,
+        );
+      },
+    );
+  }
+
+  void _showTestsBottomSheet(BuildContext context) {
+    final tests = package['tests'] as List<dynamic>? ?? [];
+    
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.7,
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Handle bar
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              
+              // Header
+              Row(
+                children: [
+                  const Icon(
+                    Icons.science,
+                    color: Color(0xFF3B5BFE),
+                    size: 24,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Included Tests (${tests.length})',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              
+              // Package name
+              Text(
+                package['packagename'] ?? package['name'] ?? 'Package',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[600],
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 20),
+              
+              // Tests list
+              Expanded(
+                child: tests.isEmpty
+                    ? const Center(
+                        child: Text(
+                          'No tests included in this package',
+                          style: TextStyle(
+                            color: Colors.grey,
+                            fontSize: 16,
+                          ),
+                        ),
+                      )
+                    : ListView.builder(
+                        itemCount: tests.length,
+                        itemBuilder: (context, index) {
+                          final test = tests[index];
+                          final testData = test['test'] ?? test;
+                          final testName = testData['testname'] ?? testData['name'] ?? 'Test ${index + 1}';
+                          final shortName = testData['shortname'] ?? testData['description'] ?? '';
+                          
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              side: BorderSide(color: Colors.grey[200]!, width: 1),
+                            ),
+                            child: ListTile(
+                              leading: Container(
+                                width: 32,
+                                height: 32,
+                                                                 decoration: BoxDecoration(
+                                   color: const Color(0xFF3B5BFE).withOpacity(0.1),
+                                   borderRadius: BorderRadius.circular(8),
+                                 ),
+                                 child: const Icon(
+                                   Icons.science,
+                                   color: Color(0xFF3B5BFE),
+                                   size: 18,
+                                 ),
+                              ),
+                              title: Text(
+                                testName,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              subtitle: shortName.isNotEmpty
+                                  ? Text(
+                                      shortName,
+                                      style: TextStyle(
+                                        color: Colors.grey[600],
+                                        fontSize: 12,
+                                      ),
+                                    )
+                                  : null,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
         );
       },
     );
@@ -440,64 +650,7 @@ class PackageTestCard extends StatelessWidget {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(height: 2),
-                      if (package['organization'] != null && package['organization']['name'].toString().isNotEmpty)
-                        Text(
-                          package['organization']['name'].toString(),
-                          style: TextStyle(
-                            color: Colors.grey[500],
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        )
-                      else
-                        const Text(
-                          'EmHealth',
-                          style: TextStyle(
-                            color: Colors.grey,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                            Row(
-                              children: [
-                                const Icon(Icons.star, color: Colors.amber, size: 12),
-                                const SizedBox(width: 2),
-                                Text(
-                                  (package['rating'] ?? package['organization']?['rating'] ?? '0').toString(),
-                                  style: TextStyle(
-                                    color: Colors.grey[600],
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          
-                            const SizedBox(width: 8),
-                            Row(
-                              children: [
-                                Icon(Icons.location_on, color: Colors.grey[600], size: 12),
-                                const SizedBox(width: 2),
-                                Text(
-                                  '${package['distance'] ?? package['organization']?['distance'] ?? '0'} km',
-                                  style: TextStyle(
-                                    color: Colors.grey[600],
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
-                            ),
-                        ],
-                      ),
+
                     ],
                   ),
                 ),
@@ -508,19 +661,17 @@ class PackageTestCard extends StatelessWidget {
                               Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  if (_shouldShowStrikeThrough())
+                                  if (_shouldShowStrikeThrough()) ...[
                                     Text(
-                                      '₹${_formatPrice(package['baseprice'] ?? '0')}',
+                                      'Starts from ',
                                       style: TextStyle(
                                         color: Colors.grey[500],
                                         fontSize: 12,
-                                        decoration: TextDecoration.lineThrough,
                                       ),
                                     ),
-                                  if (_shouldShowStrikeThrough())
-                                    const SizedBox(width: 6),
+                                  ],
                                   Text(
-                                    '₹${_formatPrice(package['discountedprice'] ?? package['baseprice'] ?? '0')}',
+                                    '₹${_calculateDiscountedPrice()}',
                                     style: const TextStyle(
                                       color: Color(0xFF2ECC71),
                                       fontWeight: FontWeight.bold,
@@ -543,19 +694,33 @@ class PackageTestCard extends StatelessWidget {
                   spacing: 6,
                   runSpacing: 4,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.blue.withOpacity(0.3), width: 0.5),
-                      ),
-                      child: Text(
-                        '${package['tests']?.length ?? 0} Tests',
-                        style: const TextStyle(
-                          color: Colors.blue,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w500,
+                    GestureDetector(
+                      onTap: () => _showTestsBottomSheet(context),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.blue.withOpacity(0.3), width: 0.5),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              '${package['tests']?.length ?? 0} Tests',
+                              style: const TextStyle(
+                                color: Colors.blue,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const SizedBox(width: 2),
+                            const Icon(
+                              Icons.info_outline,
+                              color: Colors.blue,
+                              size: 10,
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -575,7 +740,7 @@ class PackageTestCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                    if (package['discountvalue'] != null && package['discountvalue'] != '0.00')
+                    if (_shouldShowDiscount(package['discountvalue'] ?? '0'))
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
@@ -584,7 +749,7 @@ class PackageTestCard extends StatelessWidget {
                           border: Border.all(color: const Color(0xFFFF8C32).withOpacity(0.3), width: 0.5),
                         ),
                         child: Text(
-                          '${package['discountvalue']}% OFF',
+                          '${_formatDiscount(package['discountvalue'])}% OFF',
                           style: const TextStyle(
                             color: Color(0xFFFF8C32),
                             fontSize: 10,
@@ -600,19 +765,24 @@ class PackageTestCard extends StatelessWidget {
             Row(
               children: [
                 // Tests count
-                Row(
-                  children: [
-                    Icon(Icons.science, color: Colors.grey[600], size: 14),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${package['tests']?.length ?? 0} Tests',
-                      style: TextStyle(
-                        color: Colors.grey[700],
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
+                GestureDetector(
+                  onTap: () => _showTestsBottomSheet(context),
+                  child: Row(
+                    children: [
+                      Icon(Icons.science, color: Colors.grey[600], size: 14),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${package['tests']?.length ?? 0} Tests',
+                        style: TextStyle(
+                          color: Colors.grey[700],
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 2),
+                      Icon(Icons.info_outline, color: Colors.grey[600], size: 12),
+                    ],
+                  ),
                 ),
                 const SizedBox(width: 16),
                 
@@ -672,18 +842,40 @@ class PackageTestCard extends StatelessWidget {
                       )
                     : OutlinedButton(
                         onPressed: isLoading ? null : () async {
-                          // Check if organization is null
-                          if (package['organization'] == null) {
+                          // Check if organization is null or lab name is emhealth
+                          final organization = package['organization'];
+                          final organizationName = organization?['name']?.toString().toLowerCase() ?? '';
+                          
+                          print('🏥 Package Organization Check:');
+                          print('🏥 Organization: $organization');
+                          print('🏥 Organization Name: $organizationName');
+                          
+                          if (organization == null || 
+                              organizationName.contains('emhealth') ||
+                              organizationName.isEmpty ||
+                              organizationName == 'emhealth') {
+                            print('🏥 Triggering lab selection - organization is null/emhealth/empty');
                             _showLabSelectionBottomSheet(context);
                             return;
                           }
+                          
+                          print('🏥 Using existing organization: $organizationName');
                           
                           if (onAddToCartApi != null) {
                             final packageName = package['packagename'] ?? package['name'] ?? 'Package';
                             final packageId = package['id'] ?? '';
                             final price = double.tryParse(package['baseprice']?.toString() ?? '0') ?? 0.0;
                             
-                            await onAddToCartApi!(packageName, packageId, price);
+                            // Pass organization details as lab_id and lab_name
+                            final organizationId = package['organization']?['id']?.toString() ?? '';
+                            final organizationName = package['organization']?['name']?.toString() ?? '';
+                            
+                            print('🛒 Adding package to cart with existing organization:');
+                            print('🛒 Package: $packageName (ID: $packageId)');
+                            print('🛒 Organization: $organizationName (ID: $organizationId)');
+                            print('🛒 Price: $price');
+                            
+                            await onAddToCartApi!(packageName, packageId, price, organizationId: organizationId, organizationName: organizationName);
                           }
                           onAddToCart();
                         },
@@ -753,6 +945,15 @@ class _OrganizationSelectionSheetState extends State<_OrganizationSelectionSheet
   bool isLoading = true;
   String? errorMessage;
   Map<String, bool> loadingStates = {};
+  String? selectedOrganizationId;
+  bool isAddingToCart = false;
+
+  // Helper method to check if discount should be shown
+  bool _shouldShowDiscount(dynamic discountValue) {
+    if (discountValue == null || discountValue.toString().isEmpty) return false;
+    double? number = double.tryParse(discountValue.toString());
+    return number != null && number > 0;
+  }
 
   @override
   void initState() {
@@ -779,8 +980,17 @@ class _OrganizationSelectionSheetState extends State<_OrganizationSelectionSheet
         final data = result['data'];
         final orgsList = data['organizations'] as List<dynamic>;
         
+        // Filter out EmHealth organizations
+        final filteredOrgs = orgsList
+            .map((org) => org as Map<String, dynamic>)
+            .where((org) {
+              final orgName = org['name']?.toString().toLowerCase() ?? '';
+              return !orgName.contains('emhealth');
+            })
+            .toList();
+        
         setState(() {
-          organizations = orgsList.map((org) => org as Map<String, dynamic>).toList();
+          organizations = filteredOrgs;
           isLoading = false;
         });
       } else {
@@ -813,9 +1023,19 @@ class _OrganizationSelectionSheetState extends State<_OrganizationSelectionSheet
         final price = double.tryParse(organization['pricing']?['final_price']?.toString() ?? '0') ?? 0.0;
         
         // Call API with package ID, organization ID, and organization name
+        print('🛒 Adding package to cart with selected organization:');
+        print('🛒 Package: $packageName (ID: $packageId)');
+        print('🛒 Organization: $organizationName (ID: $organizationId)');
+        print('🛒 Price: $price');
+        
         await widget.onAddToCartApi!(packageName, packageId, price, organizationId: organizationId, organizationName: organizationName);
+        
+        // Only call onAddToCart for UI state update, not for API cart refresh
+        widget.onAddToCart();
+      } else {
+        // Fallback if no API callback is provided
+        widget.onAddToCart();
       }
-      widget.onAddToCart();
       
       Navigator.pop(context);
     } catch (e) {
@@ -836,11 +1056,26 @@ class _OrganizationSelectionSheetState extends State<_OrganizationSelectionSheet
     if (price == null) return '0';
     String priceStr = price.toString();
     if (priceStr.contains('.')) {
-      if (priceStr.endsWith('.00')) {
-        priceStr = priceStr.substring(0, priceStr.length - 3);
+      // Remove all decimal points and trailing zeros
+      double? number = double.tryParse(priceStr);
+      if (number != null) {
+        priceStr = number.toInt().toString();
       }
     }
     return priceStr;
+  }
+
+  String _formatDiscount(dynamic discount) {
+    if (discount == null) return '0';
+    String discountStr = discount.toString();
+    if (discountStr.contains('.')) {
+      // Remove all decimal points and trailing zeros
+      double? number = double.tryParse(discountStr);
+      if (number != null) {
+        discountStr = number.toInt().toString();
+      }
+    }
+    return discountStr;
   }
 
   @override
@@ -875,8 +1110,6 @@ class _OrganizationSelectionSheetState extends State<_OrganizationSelectionSheet
                 ],
               ),
             ),
-            
-
             
             // Content
             Expanded(
@@ -933,115 +1166,294 @@ class _OrganizationSelectionSheetState extends State<_OrganizationSelectionSheet
                               itemBuilder: (context, index) {
                                 final organization = organizations[index];
                                 final orgId = organization['id'] ?? '';
-                                final isAdding = loadingStates[orgId] ?? false;
+                                final isSelected = selectedOrganizationId == orgId;
                                 
-                                return Card(
-                                  margin: const EdgeInsets.only(bottom: 12),
-                                  elevation: 0,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    side: BorderSide(color: Colors.grey[200]!, width: 1),
+                                return Container(
+                                  margin: const EdgeInsets.only(bottom: 16),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color: isSelected ? const Color(0xFF3B5BFE) : Colors.grey[200]!,
+                                      width: isSelected ? 2 : 1,
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.05),
+                                        blurRadius: 10,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ],
                                   ),
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(16),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        // Organization name and price
-                                        Row(
-                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            Expanded(
-                                              child: Text(
-                                                organization['name'] ?? 'Unknown Lab',
-                                                style: const TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 16,
-                                                ),
-                                              ),
-                                            ),
-                                            Text(
-                                              '₹${_formatPrice(organization['pricing']?['final_price'] ?? '0')}',
-                                              style: const TextStyle(
-                                                color: Color(0xFF2ECC71),
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 16,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                        
-                                        const SizedBox(height: 8),
-                                        
-                                        // Address and distance
-                                        if (organization['addressline1'] != null)
+                                  child: InkWell(
+                                    onTap: () {
+                                      setState(() {
+                                        selectedOrganizationId = orgId;
+                                      });
+                                    },
+                                    borderRadius: BorderRadius.circular(16),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(16),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
                                           Row(
                                             children: [
-                                              Icon(Icons.location_on, color: Colors.grey[600], size: 14),
-                                              const SizedBox(width: 4),
+                                              // Lab Image/Icon
+                                              Container(
+                                                width: 60,
+                                                height: 60,
+                                                decoration: BoxDecoration(
+                                                  color: const Color(0xFF3B5BFE).withOpacity(0.1),
+                                                  borderRadius: BorderRadius.circular(12),
+                                                ),
+                                                child: const Icon(
+                                                  Icons.local_hospital,
+                                                  color: Color(0xFF3B5BFE),
+                                                  size: 30,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 12),
                                               Expanded(
-                                                child: Text(
-                                                  organization['addressline1'],
-                                                  style: TextStyle(
-                                                    color: Colors.grey[600],
-                                                    fontSize: 12,
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(
+                                                      organization['name'] ?? 'Lab',
+                                                      style: const TextStyle(
+                                                        fontSize: 16,
+                                                        fontWeight: FontWeight.bold,
+                                                        color: Colors.black87,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 4),
+                                                    Row(
+                                                      children: [
+                                                        Icon(
+                                                          Icons.star,
+                                                          size: 16,
+                                                          color: Colors.orange[400],
+                                                        ),
+                                                        const SizedBox(width: 4),
+                                                        const Text(
+                                                          '4.5',
+                                                          style: TextStyle(
+                                                            fontSize: 14,
+                                                            fontWeight: FontWeight.w500,
+                                                          ),
+                                                        ),
+                                                        const SizedBox(width: 12),
+                                                        Icon(
+                                                          Icons.location_on,
+                                                          size: 16,
+                                                          color: Colors.grey[600],
+                                                        ),
+                                                        const SizedBox(width: 4),
+                                                        Text(
+                                                          organization['distance'] ?? 'Nearby',
+                                                          style: TextStyle(
+                                                            fontSize: 14,
+                                                            color: Colors.grey[600],
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              // Radio Button
+                                              Container(
+                                                width: 20,
+                                                height: 20,
+                                                decoration: BoxDecoration(
+                                                  shape: BoxShape.circle,
+                                                  border: Border.all(
+                                                    color: isSelected ? const Color(0xFF3B5BFE) : Colors.grey[400]!,
+                                                    width: 2,
                                                   ),
+                                                ),
+                                                child: isSelected
+                                                    ? Container(
+                                                        margin: const EdgeInsets.all(4),
+                                                        decoration: const BoxDecoration(
+                                                          shape: BoxShape.circle,
+                                                          color: Color(0xFF3B5BFE),
+                                                        ),
+                                                      )
+                                                    : null,
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 12),
+                                          // Delivery Time
+                                          Row(
+                                            children: [
+                                              Icon(
+                                                Icons.access_time,
+                                                size: 16,
+                                                color: Colors.grey[600],
+                                              ),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                'Reports: Same Day',
+                                                style: TextStyle(
+                                                  fontSize: 14,
+                                                  color: Colors.grey[600],
                                                 ),
                                               ),
                                             ],
                                           ),
-                                        
-                                        if (organization['distance'] != null)
-                                          Padding(
-                                            padding: const EdgeInsets.only(top: 4),
+                                          const SizedBox(height: 12),
+                                          // Price Section
+                                          Container(
+                                            padding: const EdgeInsets.all(12),
+                                            decoration: BoxDecoration(
+                                              color: Colors.grey[50],
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
                                             child: Row(
+                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                               children: [
-                                                Icon(Icons.directions_walk, color: Colors.grey[600], size: 14),
-                                                const SizedBox(width: 4),
-                                                Text(
-                                                  organization['distance'],
-                                                  style: TextStyle(
-                                                    color: Colors.grey[600],
-                                                    fontSize: 12,
-                                                  ),
+                                                Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(
+                                                      'Total Price',
+                                                      style: TextStyle(
+                                                        fontSize: 12,
+                                                        color: Colors.grey[600],
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 2),
+                                                    Row(
+                                                      children: [
+                                                        if (organization['pricing']?['base_price'] != null && 
+                                                            organization['pricing']?['base_price'] != organization['pricing']?['final_price']) ...[
+                                                          Text(
+                                                            '₹${_formatPrice(organization['pricing']?['base_price'] ?? '0')}',
+                                                            style: const TextStyle(
+                                                              fontSize: 12,
+                                                              color: Colors.grey,
+                                                              decoration: TextDecoration.lineThrough,
+                                                            ),
+                                                          ),
+                                                          const SizedBox(width: 8),
+                                                        ],
+                                                        Text(
+                                                          '₹${_formatPrice(organization['pricing']?['final_price'] ?? '0')}',
+                                                          style: const TextStyle(
+                                                            fontSize: 16,
+                                                            fontWeight: FontWeight.bold,
+                                                            color: Color(0xFF3B5BFE),
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ],
                                                 ),
+                                                if (_shouldShowDiscount(organization['pricing']?['discount_percentage']))
+                                                  Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.green.withOpacity(0.1),
+                                                      borderRadius: BorderRadius.circular(12),
+                                                    ),
+                                                    child: Text(
+                                                      '${_formatDiscount(organization['pricing']?['discount_percentage'] ?? '0')}% OFF',
+                                                      style: const TextStyle(
+                                                        fontSize: 12,
+                                                        fontWeight: FontWeight.w600,
+                                                        color: Colors.green,
+                                                      ),
+                                                    ),
+                                                  ),
                                               ],
                                             ),
                                           ),
-                                        
-                                        const SizedBox(height: 12),
-                                        
-                                        // Add button
-                                        SizedBox(
-                                          width: double.infinity,
-                                          child: ElevatedButton(
-                                            onPressed: isAdding ? null : () => _addToCartWithOrganization(organization),
-                                            style: ElevatedButton.styleFrom(
-                                              backgroundColor: const Color(0xFF2ECC71),
-                                              foregroundColor: Colors.white,
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius: BorderRadius.circular(8),
-                                              ),
-                                              padding: const EdgeInsets.symmetric(vertical: 12),
-                                            ),
-                                            child: isAdding
-                                                ? const SizedBox(
-                                                    width: 16,
-                                                    height: 16,
-                                                    child: CircularProgressIndicator(
-                                                      strokeWidth: 2,
-                                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                                    ),
-                                                  )
-                                                : const Text('Add to Cart'),
-                                          ),
-                                        ),
-                                      ],
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 );
                               },
                             ),
+                          ),
+            
+            // Bottom Add to Cart Button
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, -2),
+                  ),
+                ],
+              ),
+              child: ElevatedButton(
+                onPressed: selectedOrganizationId != null && !isAddingToCart
+                    ? () async {
+                        setState(() {
+                          isAddingToCart = true;
+                        });
+                        try {
+                          final selectedOrg = organizations.firstWhere(
+                            (org) => org['id'] == selectedOrganizationId,
+                          );
+                          await _addToCartWithOrganization(selectedOrg);
+                        } finally {
+                          if (mounted) {
+                            setState(() {
+                              isAddingToCart = false;
+                            });
+                          }
+                        }
+                      }
+                    : null,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: selectedOrganizationId != null 
+                      ? const Color(0xFF2ECC71) 
+                      : Colors.grey[300],
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(double.infinity, 50),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: isAddingToCart
+                    ? const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          ),
+                          SizedBox(width: 12),
+                          Text(
+                            'Adding to Cart...',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      )
+                    : Text(
+                        selectedOrganizationId != null 
+                            ? 'Add to Cart' 
+                            : 'Select a Lab',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+              ),
             ),
           ],
         );

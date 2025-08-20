@@ -3,17 +3,27 @@ import '../services/api_service.dart';
 import 'package_card.dart';
 import 'package:http/http.dart' as http;
 import '../constants/api_config.dart';
+import '../constants/colors.dart';
+import 'dart:async';
 
 class PackagesListTab extends StatefulWidget {
   final Set<String> cartItems;
   final Future<void> Function(String) onAddToCart;
   final Future<void> Function(String) onRemoveFromCart;
+  final String? searchQuery;
+  final bool isSearching;
+  final List<Map<String, dynamic>>? searchResults;
+  final String? category;
 
   const PackagesListTab({
     super.key,
     required this.cartItems,
     required this.onAddToCart,
     required this.onRemoveFromCart,
+    this.searchQuery,
+    this.isSearching = false,
+    this.searchResults,
+    this.category,
   });
 
   @override
@@ -22,7 +32,7 @@ class PackagesListTab extends StatefulWidget {
 
 class _PackagesListTabState extends State<PackagesListTab> {
   List<Map<String, dynamic>> packages = [];
-  bool isLoading = true;
+  bool isLoading = false;
   bool isLoadingMore = false;
   bool hasMoreData = true;
   int currentPage = 1;
@@ -37,14 +47,17 @@ class _PackagesListTabState extends State<PackagesListTab> {
     _scrollController.addListener(_onScroll);
     print('🔄 Packages scroll controller initialized and listener added');
     
-    // Don't load packages immediately - wait for tab activation
-    print('🔄 PackagesListTab initialized - waiting for tab activation');
+    // Load packages immediately on initialization
+    print('🔄 PackagesListTab initialized - loading packages');
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadTopPackages(isRefresh: true);
+    });
   }
 
 
 
   void _loadPackagesIfNeeded() {
-    if (packages.isEmpty && !isLoading) {
+    if (packages.isEmpty) {
       print('🔄 Packages: Loading packages for first time');
       _loadTopPackages(isRefresh: true);
     }
@@ -55,6 +68,8 @@ class _PackagesListTabState extends State<PackagesListTab> {
     _scrollController.dispose();
     super.dispose();
   }
+
+
 
   void _onScroll() {
     try {
@@ -130,13 +145,15 @@ class _PackagesListTabState extends State<PackagesListTab> {
     }
 
     try {
-      print('🔄 Packages: Making API call with page: $currentPage, limit: $limit');
+      print('🔄 Packages: Making API call with page: $currentPage, limit: $limit, search: "${widget.searchQuery ?? ""}"');
       final apiService = ApiService();
       final result = await apiService.getPackages(
         page: currentPage,
         limit: limit,
         sortBy: 'baseprice',
         sortOrder: 'desc',
+        search: widget.searchQuery,
+        category: widget.category, // Pass category filter
       ).timeout(
         const Duration(seconds: 15),
         onTimeout: () {
@@ -238,9 +255,9 @@ class _PackagesListTabState extends State<PackagesListTab> {
   }
 
   Future<void> _addToCartApi(String packageName, String packageId, double price, {String? organizationId, String? organizationName}) async {
-    // Set loading state for this specific package
+    // Set loading state for this specific package using package ID
     setState(() {
-      loadingStates[packageName] = true;
+      loadingStates[packageId] = true;
     });
 
     try {
@@ -255,7 +272,11 @@ class _PackagesListTabState extends State<PackagesListTab> {
       );
       
       if (result['success']) {
-        // Success - no toast needed
+        // Success - no toast needed, item added via API
+        print('✅ Package added to cart successfully via API');
+        print('✅ Lab ID: $organizationId');
+        print('✅ Lab Name: $organizationName');
+        print('✅ Package: $packageName (ID: $packageId)');
       } else {
         // Show error message only
         if (mounted) {
@@ -277,31 +298,20 @@ class _PackagesListTabState extends State<PackagesListTab> {
         );
       }
     } finally {
-      // Clear loading state
+      // Clear loading state using package ID
       if (mounted) {
         setState(() {
-          loadingStates[packageName] = false;
+          loadingStates[packageId] = false;
         });
       }
     }
   }
 
   Future<void> _removeFromCartApi(String itemId) async {
-    // Find the package name for this item ID to set loading state
-    String? packageName;
-    for (final package in packages) {
-      if (package['id'] == itemId) {
-        packageName = package['packagename'] ?? package['name'];
-        break;
-      }
-    }
-    
-    // Set loading state for this specific package
-    if (packageName != null) {
-      setState(() {
-        loadingStates[packageName!] = true;
-      });
-    }
+    // Use itemId directly for loading state since it's the package ID
+    setState(() {
+      loadingStates[itemId] = true;
+    });
     
     try {
       final apiService = ApiService();
@@ -330,10 +340,10 @@ class _PackagesListTabState extends State<PackagesListTab> {
         );
       }
     } finally {
-      // Clear loading state
-      if (mounted && packageName != null) {
+      // Clear loading state using itemId (package ID)
+      if (mounted) {
         setState(() {
-          loadingStates[packageName!] = false;
+          loadingStates[itemId] = false;
         });
       }
     }
@@ -381,8 +391,10 @@ class _PackagesListTabState extends State<PackagesListTab> {
       // Set hasMoreData to false for fallback data since it's static
       hasMoreData = false;
       currentPage = 1;
+      isLoading = false;
+      isLoadingMore = false;
     });
-    print('🔄 Fallback packages loaded, hasMoreData set to false');
+    print('🔄 Fallback packages loaded, hasMoreData set to false, isLoading set to false');
   }
 
   Future<void> _resetPagination() async {
@@ -398,18 +410,59 @@ class _PackagesListTabState extends State<PackagesListTab> {
     await _loadTopPackages(isRefresh: true);
   }
 
+
+
   @override
   void didUpdateWidget(PackagesListTab oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Load packages when this tab becomes active and reset pagination
-    print('🔄 PackagesListTab widget updated - loading packages and resetting pagination');
-    _loadPackagesIfNeeded();
-    _resetPagination(); // Fire and forget for tab switches
+    // Only load packages if needed, don't reload on every cart change
+    print('🔄 PackagesListTab widget updated');
+    
+    // Only reload if there's no packages data, avoid reloading on cart updates
+    if (packages.isEmpty) {
+      print('🔄 No packages data, loading for first time');
+      _loadPackagesIfNeeded();
+    } else {
+      print('🔄 Packages already loaded (${packages.length} packages), skipping reload to prevent list refresh');
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (isLoading) {
+    print('🔄 PackagesListTab build called - isLoading: $isLoading, packages.length: ${packages.length}, searchQuery: "${widget.searchQuery ?? ""}", isSearching: ${widget.isSearching}');
+    
+    return _buildContent();
+  }
+
+  Widget _buildContent() {
+    // Use search results if available, otherwise use regular packages
+    final displayPackages = widget.searchResults ?? packages;
+    final isSearchActive = widget.searchQuery != null && widget.searchQuery!.isNotEmpty;
+    
+    if (widget.isSearching && displayPackages.isEmpty) {
+      print('🔄 Showing search loading indicator');
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF2ECC71)),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Searching packages...',
+              style: TextStyle(
+                color: Colors.grey[600],
+                fontSize: 16,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    
+    if (isLoading && displayPackages.isEmpty && !isSearchActive) {
+      print('🔄 Showing initial loading indicator');
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -430,14 +483,38 @@ class _PackagesListTabState extends State<PackagesListTab> {
       );
     }
 
-    if (packages.isEmpty) {
-      return const Center(
-        child: Text(
-          'No packages available',
-          style: TextStyle(
-            color: Colors.grey,
-            fontSize: 16,
-          ),
+    if (displayPackages.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              isSearchActive ? Icons.search_off : Icons.inventory_2_outlined,
+              size: 64,
+              color: Colors.grey[400],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              isSearchActive 
+                  ? 'No packages found for "${widget.searchQuery}"'
+                  : 'No packages available',
+              style: TextStyle(
+                color: Colors.grey[600],
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            if (isSearchActive) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Try searching with different keywords',
+                style: TextStyle(
+                  color: Colors.grey[500],
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ],
         ),
       );
     }
@@ -449,12 +526,11 @@ class _PackagesListTabState extends State<PackagesListTab> {
       child: ListView.builder(
         controller: _scrollController,
         padding: const EdgeInsets.all(16),
-        itemCount: packages.length + (hasMoreData ? 1 : 0),
-        // Add physics to ensure scrolling works
+        itemCount: displayPackages.length + (hasMoreData && !isSearchActive ? 1 : 0),
         physics: const AlwaysScrollableScrollPhysics(),
         itemBuilder: (context, index) {
-          // Show loading indicator at the bottom when loading more
-          if (index == packages.length && hasMoreData) {
+          // Show loading indicator at the bottom when loading more (only for non-search)
+          if (index == displayPackages.length && hasMoreData && !isSearchActive) {
             return Container(
               padding: const EdgeInsets.all(16),
               child: const Center(
@@ -465,18 +541,19 @@ class _PackagesListTabState extends State<PackagesListTab> {
             );
           }
           
-          final package = packages[index];
-          final packageName = package['packagename'] ?? package['name'] ?? 'Package';
-          final isInCart = widget.cartItems.contains(packageName);
+          final package = displayPackages[index];
+          final packageId = package['id']?.toString() ?? '';
+          // Use package ID for cart selection - cart system now uses IDs internally
+          final isInCart = widget.cartItems.contains(packageId);
           
           return PackageTestCard(
             package: package,
             isInCart: isInCart,
-            onAddToCart: () async => await widget.onAddToCart(packageName),
-            onRemoveFromCart: () async => await widget.onRemoveFromCart(packageName),
+            onAddToCart: () async => await widget.onAddToCart(packageId),
+            onRemoveFromCart: () async => await widget.onRemoveFromCart(packageId),
             onAddToCartApi: _addToCartApi,
             onRemoveFromCartApi: _removeFromCartApi,
-            isLoading: loadingStates[packageName] ?? false,
+            isLoading: loadingStates[packageId] ?? false,
           );
         },
       ),

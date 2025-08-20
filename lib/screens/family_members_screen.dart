@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../constants/colors.dart';
 import '../services/api_service.dart';
 import '../models/dependent.dart';
+import '../widgets/add_family_member_bottom_sheet.dart';
 
 class FamilyMembersScreen extends StatefulWidget {
   const FamilyMembersScreen({super.key});
@@ -393,7 +394,10 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
     });
     
     _clearForm();
-    _showMemberFormDialog('Add Family Member');
+    AddFamilyMemberBottomSheet.show(
+      context: context,
+      onMemberAdded: _loadFamilyMembers,
+    );
   }
 
   void _showMemberFormDialog(String title) {

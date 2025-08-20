@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../constants/colors.dart';
 import '../services/api_service.dart';
+import '../services/location_service.dart';
+import 'package:geolocator/geolocator.dart';
 
 class AddressesScreen extends StatefulWidget {
   const AddressesScreen({super.key});
@@ -11,6 +13,7 @@ class AddressesScreen extends StatefulWidget {
 
 class _AddressesScreenState extends State<AddressesScreen> {
   final ApiService _apiService = ApiService();
+  final LocationService _locationService = LocationService();
   List<Map<String, dynamic>> addresses = [];
   bool isLoading = true;
   String? errorMessage;
@@ -37,6 +40,146 @@ class _AddressesScreenState extends State<AddressesScreen> {
   
   // Edit mode variables
   Map<String, dynamic>? _editingAddress;
+
+  /// Test location functionality directly
+  Future<void> _testLocationDirectly(BuildContext context) async {
+    try {
+      print('🧪 Testing location directly...');
+      
+      // Simple test to check if geolocator is working
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('🧪 Testing geolocator plugin...'),
+          backgroundColor: Colors.blue,
+        ),
+      );
+      
+      // Try to get the last known position first (this might work without permissions)
+      try {
+        Position? lastKnownPosition = await Geolocator.getLastKnownPosition();
+        if (lastKnownPosition != null) {
+          print('🧪 Last known position: ${lastKnownPosition.latitude}, ${lastKnownPosition.longitude}');
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('📍 Last known: ${lastKnownPosition.latitude.toStringAsFixed(6)}, ${lastKnownPosition.longitude.toStringAsFixed(6)}'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          return;
+        }
+      } catch (e) {
+        print('🧪 Last known position error: $e');
+      }
+      
+      // If no last known position, try to get current position
+      print('🧪 Trying to get current position...');
+      Position position = await Geolocator.getCurrentPosition();
+      print('🧪 Position obtained: ${position.latitude}, ${position.longitude}');
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('📍 Current: ${position.latitude.toStringAsFixed(6)}, ${position.longitude.toStringAsFixed(6)}'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      
+    } catch (e) {
+      print('❌ Location test error: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ Location error: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// Get current location and show it in a toast
+  Future<void> _getCurrentLocationAndShowToast() async {
+    try {
+      // Show loading toast
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              ),
+              SizedBox(width: 16),
+              Text('Getting your current location...'),
+            ],
+          ),
+          duration: Duration(seconds: 10),
+        ),
+      );
+
+      // Get current location
+      final result = await _locationService.getCurrentLocation(context);
+      
+      // Dismiss loading toast
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
+      if (result['success']) {
+        final data = result['data'];
+        final latitude = data['latitude'];
+        final longitude = data['longitude'];
+        final accuracy = data['accuracy'];
+        
+        // Show location in toast
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '📍 Current Location',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text('Latitude: ${latitude.toStringAsFixed(6)}'),
+                Text('Longitude: ${longitude.toStringAsFixed(6)}'),
+                Text('Accuracy: ${accuracy.toStringAsFixed(1)} meters'),
+              ],
+            ),
+            duration: const Duration(seconds: 5),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+        );
+      } else {
+        // Show error toast
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ ${result['message']}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      // Dismiss loading toast and show error
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ Error getting location: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
+  }
 
   @override
   void initState() {
@@ -1002,6 +1145,11 @@ class _AddressesScreenState extends State<AddressesScreen> {
           onPressed: () => Navigator.of(context).pop(),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.my_location, color: Colors.white),
+            onPressed: _getCurrentLocationAndShowToast,
+            tooltip: 'Get Current Location',
+          ),
           TextButton(
             onPressed: _showAddAddressDialog,
             child: const Text(

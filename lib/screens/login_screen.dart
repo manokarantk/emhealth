@@ -111,10 +111,11 @@ class _LoginScreenState extends State<LoginScreen> {
                   // Illustration (placeholder)
                   SizedBox(
                     height: 160,
-                    child: Icon(
-                        Icons.local_hospital,
-                        size: 120,
-                        color: AppColors.primaryBlue.withOpacity(0.2),
+                    child: Image.asset(
+                      'assets/logo.jpg',
+                      height: 120,
+                      width: 120,
+                      fit: BoxFit.contain,
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -122,10 +123,11 @@ class _LoginScreenState extends State<LoginScreen> {
                   const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 32.0),
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         Text(
-                          'Sign In',
+                          'emHealth',
+                          textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 32,
                             fontWeight: FontWeight.bold,
@@ -134,7 +136,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         SizedBox(height: 8),
                         Text(
-                          'Enter your mobile number to sign up for this app!',
+                          'Enter your mobile number to start using the app',
+                          textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 16,
                             color: AppColors.grey,
@@ -168,15 +171,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               value: _selectedCountryCode,
                               icon: const Icon(Icons.arrow_drop_down),
                               style: const TextStyle(fontSize: 16, color: AppColors.primaryBlue),
-                              onChanged: (String? newValue) {
-                                if (newValue != null) {
-                                  final selected = _countryCodes.firstWhere((c) => c['code'] == newValue);
-                                  setState(() {
-                                    _selectedCountryCode = selected['code']!;
-                                    _selectedFlag = selected['flag']!;
-                                  });
-                                }
-                              },
+                              onChanged: null,
                               items: _countryCodes.map<DropdownMenuItem<String>>((Map<String, String> value) {
                                 return DropdownMenuItem<String>(
                                   value: value['code'],
@@ -253,7 +248,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   Text(
-                                    'Sign with Mobile Number',
+                                    'Get OTP',
                                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                                   ),
                                   SizedBox(width: 8),

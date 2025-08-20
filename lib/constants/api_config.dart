@@ -1,6 +1,7 @@
 class ApiConfig {
   // Base URL
-  static const String baseUrl = 'http://localhost:3000/api/v1';
+  //static const String baseUrl = 'http://159.89.173.18:3000/api/v1';
+ static const String baseUrl = 'http://localhost:3000/api/v1';
   
   // Auth endpoints
   static const String requestOtp = '/auth/request-otp';
@@ -63,6 +64,7 @@ class ApiConfig {
   // Lab/Provider endpoints
   static const String organizationsProviders = '/mobile/organizations/providers';
   static const String organizationsTimeslots = '/mobile/organizations/timeslots';
+  static const String organizationTests = '/mobile/organizations/';
   
   // Cart endpoints
   static const String cartAdd = '/mobile/cart/add';
@@ -84,6 +86,7 @@ class ApiConfig {
   
   // Appointments endpoints
   static const String createAppointment = '/mobile/appointments';
+  static const String multiLabAppointment = '/mobile/appointments/multi-lab';
   
   // Referral endpoints
   static const String referralStats = '/mobile/referrals/stats';

@@ -66,41 +66,41 @@ class TestCard extends StatelessWidget {
               children: [
                 if (test['ishomecollection'] == true || test['homeCollection'] == true)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                     decoration: BoxDecoration(
                       color: Colors.blue.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: Colors.blue.withOpacity(0.3)),
                     ),
                     child: const Text(
                       'Home Collection',
                       style: TextStyle(
                         color: Colors.blue,
-                        fontSize: 12,
+                        fontSize: 11,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
                   ),
                 if (test['collectioninstruction'] != null)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                     decoration: BoxDecoration(
                       color: Colors.orange.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: Colors.orange.withOpacity(0.3)),
                     ),
                     child: Text(
                       test['collectioninstruction'],
                       style: const TextStyle(
                         color: Colors.orange,
-                        fontSize: 12,
+                        fontSize: 11,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
                   ),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [

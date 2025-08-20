@@ -8,6 +8,10 @@ class TestsListTab extends StatefulWidget {
   final Future<void> Function(String) onAddToCart;
   final Future<void> Function(String) onRemoveFromCart;
   final VoidCallback? onTabActivated;
+  final List<Map<String, dynamic>>? searchResults;
+  final bool isSearching;
+  final String? searchQuery;
+  final String? category;
 
   const TestsListTab({
     super.key,
@@ -15,6 +19,10 @@ class TestsListTab extends StatefulWidget {
     required this.onAddToCart,
     required this.onRemoveFromCart,
     this.onTabActivated,
+    this.searchResults,
+    this.isSearching = false,
+    this.searchQuery,
+    this.category,
   });
 
   @override
@@ -133,10 +141,13 @@ class _TestsListTabState extends State<TestsListTab> {
 
     try {
       print('🔄 Making API call with page: $currentPage, limit: $limit');
+      print('🔄 Search query from widget: "${widget.searchQuery}"');
       final apiService = ApiService();
       final result = await apiService.getDiagnosisTests(
+        search: widget.searchQuery,
         page: currentPage,
         limit: limit,
+        category: widget.category, // Pass category filter
       );
       print('🔄 API call completed, result success: ${result['success']}');
       
@@ -225,9 +236,9 @@ class _TestsListTabState extends State<TestsListTab> {
   }
 
   Future<void> _addToCartApi(String testName, String labTestId, double price) async {
-    // Set loading state for this specific test
+    // Set loading state for this specific test using test ID
     setState(() {
-      loadingStates[testName] = true;
+      loadingStates[labTestId] = true;
     });
 
     try {
@@ -269,31 +280,20 @@ class _TestsListTabState extends State<TestsListTab> {
         );
       }
     } finally {
-      // Clear loading state
+      // Clear loading state using test ID
       if (mounted) {
         setState(() {
-          loadingStates[testName] = false;
+          loadingStates[labTestId] = false;
         });
       }
     }
   }
 
   Future<void> _removeFromCartApi(String itemId) async {
-    // Find the test name for this item ID to set loading state
-    String? testName;
-    for (final test in tests) {
-      if (test['id'] == itemId) {
-        testName = test['testname'] ?? test['name'];
-        break;
-      }
-    }
-    
-    // Set loading state for this specific test
-    if (testName != null) {
-      setState(() {
-        loadingStates[testName!] = true;
-      });
-    }
+    // Use itemId directly for loading state since it's the test ID
+    setState(() {
+      loadingStates[itemId] = true;
+    });
     
     try {
       final apiService = ApiService();
@@ -330,10 +330,10 @@ class _TestsListTabState extends State<TestsListTab> {
         );
       }
     } finally {
-      // Clear loading state
-      if (mounted && testName != null) {
+      // Clear loading state using itemId (test ID)
+      if (mounted) {
         setState(() {
-          loadingStates[testName!] = false;
+          loadingStates[itemId] = false;
         });
       }
     }
@@ -349,7 +349,7 @@ class _TestsListTabState extends State<TestsListTab> {
           'baseprice': '599.00',
           'discountvalue': '40.00',
           'ishomecollection': true,
-          'collectioninstruction': 'Any Time',
+          'collectioninstruction': 'Random',
         },
         {
           'testname': 'Diabetes Screening',
@@ -381,7 +381,7 @@ class _TestsListTabState extends State<TestsListTab> {
           'baseprice': '899.00',
           'discountvalue': '40.00',
           'ishomecollection': true,
-          'collectioninstruction': 'Any Time',
+          'collectioninstruction': 'Random',
         },
         {
           'testname': 'Lipid Profile',
@@ -397,7 +397,7 @@ class _TestsListTabState extends State<TestsListTab> {
           'baseprice': '399.00',
           'discountvalue': '43.00',
           'ishomecollection': true,
-          'collectioninstruction': 'Any Time',
+          'collectioninstruction': 'Random',
         },
         {
           'testname': 'HbA1c Test',
@@ -405,7 +405,7 @@ class _TestsListTabState extends State<TestsListTab> {
           'baseprice': '349.00',
           'discountvalue': '46.00',
           'ishomecollection': true,
-          'collectioninstruction': 'Any Time',
+          'collectioninstruction': 'Random',
         },
       ];
       // Set hasMoreData to false for fallback data since it's static
@@ -430,6 +430,84 @@ class _TestsListTabState extends State<TestsListTab> {
 
   @override
   Widget build(BuildContext context) {
+    // Handle search results
+    if (widget.searchResults != null) {
+      if (widget.isSearching) {
+        return const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryBlue),
+              ),
+              SizedBox(height: 16),
+              Text(
+                'Searching...',
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontSize: 16,
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+
+      if (widget.searchResults!.isEmpty) {
+        return const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.search_off,
+                size: 64,
+                color: Colors.grey,
+              ),
+              SizedBox(height: 16),
+              Text(
+                'No tests found',
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              SizedBox(height: 8),
+              Text(
+                'Try a different search term',
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+
+      // Display search results
+      return ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: widget.searchResults!.length,
+        itemBuilder: (context, index) {
+          final test = widget.searchResults![index];
+          final testId = test['id']?.toString() ?? '';
+          final isInCart = widget.cartItems.contains(testId);
+          
+          return TestCard(
+            test: test,
+            isInCart: isInCart,
+            onAddToCart: () async => await widget.onAddToCart(testId),
+            onRemoveFromCart: () async => await widget.onRemoveFromCart(testId),
+            onAddToCartApi: _addToCartApi,
+            onRemoveFromCartApi: _removeFromCartApi,
+            isLoading: loadingStates[testId] ?? false,
+          );
+        },
+      );
+    }
+
+    // Handle normal loading state
     if (isLoading) {
       return const Center(
         child: CircularProgressIndicator(
@@ -476,17 +554,17 @@ class _TestsListTabState extends State<TestsListTab> {
               }
               
               final test = tests[index];
-              final testName = test['testname'] ?? test['name'] ?? 'Test';
-              final isInCart = widget.cartItems.contains(testName);
+              final testId = test['id']?.toString() ?? '';
+              final isInCart = widget.cartItems.contains(testId);
               
               return TestCard(
                 test: test,
                 isInCart: isInCart,
-                onAddToCart: () async => await widget.onAddToCart(testName),
-                onRemoveFromCart: () async => await widget.onRemoveFromCart(testName),
+                onAddToCart: () async => await widget.onAddToCart(testId),
+                onRemoveFromCart: () async => await widget.onRemoveFromCart(testId),
                 onAddToCartApi: _addToCartApi,
                 onRemoveFromCartApi: _removeFromCartApi,
-                isLoading: loadingStates[testName] ?? false,
+                isLoading: loadingStates[testId] ?? false,
               );
             },
           ),

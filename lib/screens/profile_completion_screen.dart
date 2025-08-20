@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import '../constants/colors.dart';
 import '../services/api_service.dart';
 import '../constants/api_config.dart';
@@ -18,11 +19,28 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
   final _cityController = TextEditingController();
   final _referralCodeController = TextEditingController();
   DateTime? _dob;
-  final List<String> _cities = ['New York', 'London', 'Sydney', 'Mumbai', 'Berlin', 'Other'];
+  final List<String> _cities = [
+    'Chennai', 'Coimbatore', 'Madurai', 'Salem', 'Tiruchirappalli', 'Vellore', 
+    'Erode', 'Tiruppur', 'Thoothukkudi', 'Dindigul', 'Thanjavur', 'Kanchipuram', 
+    'Nagercoil', 'Kumbakonam', 'Cuddalore', 'Villupuram', 'Krishnagiri', 
+    'Namakkal', 'Karur', 'Pudukkottai', 'Sivaganga', 'Ramanathapuram', 
+    'Virudhunagar', 'Tirunelveli', 'Theni', 'Ariyalur', 'Perambalur', 
+    'Tiruvannamalai', 'Nagapattinam', 'Tiruvarur', 'Other'
+  ];
   String? _selectedCity;
   String? _selectedGender;
   final List<String> _genders = ['male', 'female', 'other'];
   bool _isLoading = false;
+  bool _isLoadingLocation = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Request location permission and get current location immediately
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _requestLocationPermissionAndGetLocation();
+    });
+  }
 
   @override
   void dispose() {
@@ -31,6 +49,215 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
     _cityController.dispose();
     _referralCodeController.dispose();
     super.dispose();
+  }
+
+  /// Extract city name from coordinates (simplified)
+  String _extractCityFromCoordinates(double latitude, double longitude) {
+    // For now, return a default city based on coordinates
+    // In a real app, you would use reverse geocoding API
+    if (latitude >= 12.9716 && latitude <= 13.0827 && 
+        longitude >= 80.2707 && longitude <= 80.2707) {
+      return 'Chennai';
+    } else if (latitude >= 11.0168 && latitude <= 11.0168 && 
+               longitude >= 76.9558 && longitude <= 76.9558) {
+      return 'Coimbatore';
+    } else if (latitude >= 9.9252 && latitude <= 9.9252 && 
+               longitude >= 78.1198 && longitude <= 78.1198) {
+      return 'Madurai';
+    } else {
+      return 'Chennai'; // Default fallback
+    }
+  }
+
+  /// Request location permission and get current location immediately
+  Future<void> _requestLocationPermissionAndGetLocation() async {
+    setState(() {
+      _isLoadingLocation = true;
+    });
+
+    try {
+      // Check if location services are enabled
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        // Show dialog to enable location services
+        if (mounted) {
+          showDialog(
+            context: context,
+            builder: (BuildContext context) {
+              return AlertDialog(
+                title: const Text('Location Services Disabled'),
+                content: const Text(
+                  'Please enable location services to automatically detect your city. You can also manually select your city from the dropdown.',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      setState(() {
+                        _selectedCity = 'Chennai';
+                        _cityController.text = 'Chennai';
+                        _isLoadingLocation = false;
+                      });
+                    },
+                    child: const Text('OK'),
+                  ),
+                ],
+              );
+            },
+          );
+        }
+        return;
+      }
+
+      // Check location permissions
+      LocationPermission permission = await Geolocator.checkPermission();
+      
+      if (permission == LocationPermission.denied) {
+        // Request permission with explanation
+        if (mounted) {
+          showDialog(
+            context: context,
+            builder: (BuildContext context) {
+              return AlertDialog(
+                title: const Text('Location Permission Required'),
+                content: const Text(
+                  'We need access to your location to automatically detect your city and provide better service. This helps us show relevant labs and services near you.',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      setState(() {
+                        _selectedCity = 'Chennai';
+                        _cityController.text = 'Chennai';
+                        _isLoadingLocation = false;
+                      });
+                    },
+                    child: const Text('Not Now'),
+                  ),
+                  TextButton(
+                    onPressed: () async {
+                      Navigator.of(context).pop();
+                      permission = await Geolocator.requestPermission();
+                      if (permission == LocationPermission.whileInUse || 
+                          permission == LocationPermission.always) {
+                        await _getCurrentLocation();
+                      } else {
+                        setState(() {
+                          _selectedCity = 'Chennai';
+                          _cityController.text = 'Chennai';
+                          _isLoadingLocation = false;
+                        });
+                      }
+                    },
+                    child: const Text('Allow'),
+                  ),
+                ],
+              );
+            },
+          );
+        }
+        return;
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        // Permission denied forever, show dialog
+        if (mounted) {
+          showDialog(
+            context: context,
+            builder: (BuildContext context) {
+              return AlertDialog(
+                title: const Text('Location Permission Denied'),
+                content: const Text(
+                  'Location permission has been permanently denied. You can manually select your city from the dropdown below.',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      setState(() {
+                        _selectedCity = 'Chennai';
+                        _cityController.text = 'Chennai';
+                        _isLoadingLocation = false;
+                      });
+                    },
+                    child: const Text('OK'),
+                  ),
+                ],
+              );
+            },
+          );
+        }
+        return;
+      }
+
+      // Permission granted, get current location
+      if (permission == LocationPermission.whileInUse || 
+          permission == LocationPermission.always) {
+        await _getCurrentLocation();
+      }
+
+    } catch (e) {
+      print('Error in location permission flow: $e');
+      setState(() {
+        _selectedCity = 'Chennai';
+        _cityController.text = 'Chennai';
+        _isLoadingLocation = false;
+      });
+    }
+  }
+
+  /// Get current location and set as default city
+  Future<void> _getCurrentLocation() async {
+    try {
+      // Get current position
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 10),
+      );
+
+      // Extract city from coordinates
+      String cityFromCoordinates = _extractCityFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
+
+      setState(() {
+        _selectedCity = cityFromCoordinates;
+        _cityController.text = cityFromCoordinates;
+        _isLoadingLocation = false;
+      });
+
+      // Show success message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Location detected: $cityFromCoordinates'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+
+    } catch (e) {
+      print('Error getting location: $e');
+      // Set default city on error
+      setState(() {
+        _selectedCity = 'Chennai';
+        _cityController.text = 'Chennai';
+        _isLoadingLocation = false;
+      });
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not detect location. Please select your city manually.'),
+            backgroundColor: Colors.orange,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _pickDate() async {
@@ -144,6 +371,139 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
         }
       }
     }
+  }
+
+  /// Show searchable city selection dialog
+  void _showCitySearchDialog() {
+    String searchQuery = '';
+    List<String> filteredCities = List.from(_cities);
+    
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text(
+                'Select Your City',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Search TextField
+                    TextField(
+                      autofocus: true,
+                      decoration: InputDecoration(
+                        hintText: 'Search cities...',
+                        prefixIcon: const Icon(Icons.search, color: Colors.grey),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Colors.grey[300]!),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Colors.grey[300]!),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: AppColors.primaryBlue, width:2),
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey[50],
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      ),
+                      onChanged: (value) {
+                        setDialogState(() {
+                          searchQuery = value;
+                          filteredCities = _cities
+                              .where((city) => city.toLowerCase().contains(value.toLowerCase()))
+                              .toList();
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    // Cities List
+                    Container(
+                      constraints: const BoxConstraints(maxHeight: 300),
+                      child: filteredCities.isEmpty
+                          ? const Center(
+                              child: Padding(
+                                padding: EdgeInsets.all(20),
+                                child: Text(
+                                  'No cities found',
+                                  style: TextStyle(
+                                    color: Colors.grey,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ),
+                            )
+                          : ListView.builder(
+                              shrinkWrap: true,
+                              itemCount: filteredCities.length,
+                              itemBuilder: (context, index) {
+                                final city = filteredCities[index];
+                                final isSelected = _selectedCity == city;
+                                
+                                return ListTile(
+                                  title: Text(
+                                    city,
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      color: isSelected ? AppColors.primaryBlue : Colors.black87,
+                                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                                    ),
+                                  ),
+                                  leading: Icon(
+                                    isSelected ? Icons.check_circle : Icons.location_city,
+                                    color: isSelected ? AppColors.primaryBlue : Colors.grey,
+                                    size: 20,
+                                  ),
+                                  onTap: () {
+                                    setState(() {
+                                      _selectedCity = city;
+                                      if (city != 'Other') {
+                                        _cityController.text = city;
+                                      } else {
+                                        _cityController.text = '';
+                                      }
+                                    });
+                                    Navigator.of(context).pop();
+                                  },
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text(
+                    'Cancel',
+                    style: TextStyle(
+                      color: Colors.grey,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -313,42 +673,50 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
                       },
                     ),
                     const SizedBox(height: 20),
-                    // City (dropdown + text)
-                    DropdownButtonFormField<String>(
-                      value: _selectedCity,
-                      items: _cities.map((city) {
-                        return DropdownMenuItem<String>(
-                          value: city,
-                          child: Text(city),
-                        );
-                      }).toList(),
-                      onChanged: (value) {
-                        setState(() {
-                          _selectedCity = value;
-                          if (value != 'Other') {
-                            _cityController.text = value!;
-                          } else {
-                            _cityController.text = '';
-                          }
-                        });
-                      },
-                      decoration: InputDecoration(
-                        labelText: 'City',
-                        prefixIcon: const Icon(Icons.location_city),
-                        filled: true,
-                        fillColor: Colors.white,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: BorderSide.none,
+                    // City (searchable dropdown)
+                    GestureDetector(
+                      onTap: _isLoadingLocation ? null : () => _showCitySearchDialog(),
+                      child: AbsorbPointer(
+                        child: TextFormField(
+                          controller: TextEditingController(
+                            text: _selectedCity ?? (_isLoadingLocation ? 'Getting your location...' : ''),
+                          ),
+                          decoration: InputDecoration(
+                            labelText: 'City',
+                            prefixIcon: const Icon(Icons.location_city),
+                            suffixIcon: _isLoadingLocation 
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  )
+                                : Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        icon: const Icon(Icons.my_location),
+                                        onPressed: _getCurrentLocation,
+                                        tooltip: 'Use current location',
+                                      ),
+                                      const Icon(Icons.arrow_drop_down),
+                                    ],
+                                  ),
+                            filled: true,
+                            fillColor: Colors.white,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              borderSide: BorderSide.none,
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
+                          ),
+                          validator: (value) {
+                            if ((_cityController.text.isEmpty && (_selectedCity == null || _selectedCity == 'Other')) || (_selectedCity == null)) {
+                              return 'Please select or enter your city';
+                            }
+                            return null;
+                          },
                         ),
-                        contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
                       ),
-                      validator: (value) {
-                        if ((_cityController.text.isEmpty && (value == null || value == 'Other')) || (value == null)) {
-                          return 'Please select or enter your city';
-                        }
-                        return null;
-                      },
                     ),
                     if (_selectedCity == 'Other')
                       Padding(

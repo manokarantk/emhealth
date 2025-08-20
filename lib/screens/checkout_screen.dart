@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import '../constants/colors.dart';
 import '../services/api_service.dart';
+import '../services/storage_service.dart';
 import 'tests_listing_screen.dart';
 import 'family_members_screen.dart';
 import 'addresses_screen.dart';
-import 'order_detail_screen.dart';
+
 
 class CheckoutScreen extends StatefulWidget {
   final Set<String> cartItems;
@@ -17,6 +18,9 @@ class CheckoutScreen extends StatefulWidget {
   final String organizationId;
   final Map<String, dynamic> cartData;
   final Function(String)? onRemoveFromCart; // Callback for removing items from cart
+  final VoidCallback? onCartCleared; // Callback for when entire cart is cleared
+  final Map<String, dynamic>? multiLabData; // For multi-lab bookings
+  final Map<String, dynamic>? schedulingData; // For single lab scheduling
 
   const CheckoutScreen({
     super.key,
@@ -30,6 +34,9 @@ class CheckoutScreen extends StatefulWidget {
     required this.organizationId,
     required this.cartData,
     this.onRemoveFromCart, // Optional callback
+    this.onCartCleared, // Optional callback for cart clearing
+    this.multiLabData, // Optional multi-lab data
+    this.schedulingData, // Optional scheduling data
   });
 
   @override
@@ -39,6 +46,9 @@ class CheckoutScreen extends StatefulWidget {
 class _CheckoutScreenState extends State<CheckoutScreen> {
   final ApiService _apiService = ApiService();
   Set<String> selectedTests = {};
+  Set<String> selectedPackages = {};
+  Map<String, String> testIdToName = {}; // Map test IDs to test names
+  Map<String, String> packageIdToName = {}; // Map package IDs to package names
   String selectedPaymentMethod = 'Online Payment';
   bool isHomeCollection = true;
   DateTime selectedDate = DateTime.now();
@@ -46,7 +56,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   String selectedPatient = 'Myself';
   String? selectedAddress;
   bool useWalletBalance = false;
-  double walletBalance = 1250.0; // Sample wallet balance
+  double walletBalance = 0.0; // Will be loaded from API
+  bool isLoadingWallet = true; // Start loading immediately
+  String? walletError;
   String? appliedCoupon;
   String? couponCode;
   double couponDiscount = 0.0;
@@ -77,11 +89,39 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   @override
   void initState() {
     super.initState();
-    selectedTests = Set.from(widget.cartItems);
+    
+    // Initialize cart items from the initial cart data
+    _updateCartFromFreshData(widget.cartData);
     
     print('🔄 CheckoutScreen initState');
     print('🔄 Organization ID: ${widget.organizationId}');
     print('🔄 Selected Lab: ${widget.selectedLab}');
+    
+    // Debug test and package prices
+    print('🔍 DEBUGGING TEST AND PACKAGE PRICES:');
+    print('🔍 Selected Tests: $selectedTests');
+    print('🔍 Selected Packages: $selectedPackages');
+    print('🔍 Test prices map: ${widget.testPrices}');
+    print('🔍 Cart data: ${widget.cartData}');
+    for (final testId in selectedTests) {
+      final testName = testIdToName[testId] ?? testId;
+      final price = widget.testPrices[testName];
+      print('🔍 Test "$testName" (ID: $testId) -> Price: ₹$price');
+    }
+    for (final packageId in selectedPackages) {
+      final packageName = packageIdToName[packageId] ?? packageId;
+      final price = _getPackagePrice(packageName);
+      print('🔍 Package "$packageName" (ID: $packageId) -> Price: ₹$price');
+    }
+    
+    // Check if cart data has price information
+    if (widget.cartData['items'] != null) {
+      final items = List<Map<String, dynamic>>.from(widget.cartData['items']);
+      print('🔍 Cart data items with prices:');
+      for (final item in items) {
+        print('🔍 Item: ${item['test_name']} -> Price: ${item['price']} (Type: ${item.runtimeType})');
+      }
+    }
     
     // Load timeslots for today's date if organization ID is available
     if (widget.organizationId.isNotEmpty) {
@@ -98,6 +138,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     
     // Load addresses
     _loadAddresses();
+    
+    // Load wallet balance
+    _loadWalletBalance();
   }
 
   Future<void> _loadDependents() async {
@@ -237,15 +280,283 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
-  Future<bool> _clearCart() async {
-    print('🛒 Clearing cart...');
+  // Load wallet balance
+  Future<void> _loadWalletBalance() async {
+    setState(() {
+      isLoadingWallet = true;
+      walletError = null;
+    });
+
     try {
+      final result = await _apiService.getMobileWallet();
+      
+      print('💰 Wallet API Response: $result');
+      print('💰 Response type: ${result.runtimeType}');
+      print('💰 Success field: ${result['success']}');
+      print('💰 Data field: ${result['data']}');
+      print('💰 Data type: ${result['data']?.runtimeType}');
+      
+      if (result['success'] == true && mounted) {
+        final walletData = result['data'];
+        print('💰 Wallet data: $walletData');
+        print('💰 Wallet data type: ${walletData.runtimeType}');
+        print('💰 Wallet field: ${walletData?['wallet']}');
+        print('💰 Balance field: ${walletData?['wallet']?['balance']}');
+        print('💰 Balance field type: ${walletData?['wallet']?['balance']?.runtimeType}');
+        
+        if (walletData != null && walletData['wallet'] != null && walletData['wallet']['balance'] != null) {
+          final balanceString = walletData['wallet']['balance'].toString();
+          print('💰 Balance string: "$balanceString"');
+          final balance = double.tryParse(balanceString) ?? 0.0;
+          print('💰 Parsed balance: $balance');
+          
+          setState(() {
+            walletBalance = balance;
+            isLoadingWallet = false;
+          });
+          print('✅ Loaded wallet balance: ₹${walletBalance.toStringAsFixed(0)}');
+        } else {
+          setState(() {
+            walletBalance = 0.0;
+            isLoadingWallet = false;
+          });
+          print('⚠️ No wallet balance found, setting to 0');
+          print('⚠️ walletData is null: ${walletData == null}');
+          print('⚠️ wallet field is null: ${walletData?['wallet'] == null}');
+          print('⚠️ balance is null: ${walletData?['wallet']?['balance'] == null}');
+        }
+      } else {
+        setState(() {
+          walletError = result['message'] ?? 'Failed to load wallet balance';
+          isLoadingWallet = false;
+        });
+        print('❌ Failed to load wallet balance: ${result['message']}');
+      }
+    } catch (e) {
+      setState(() {
+        walletError = 'Error loading wallet balance: $e';
+        isLoadingWallet = false;
+      });
+      print('❌ Error loading wallet balance: $e');
+    }
+  }
+
+  // Helper method to get discounted test price (always shows discounted price by default)
+  double _getTestDiscountedPrice(String testName) {
+    if (widget.cartData['items'] != null) {
+      final items = List<Map<String, dynamic>>.from(widget.cartData['items']);
+      for (final item in items) {
+        final itemName = item['test_name']?.toString() ?? '';
+        if (itemName == testName || itemName.toLowerCase() == testName.toLowerCase()) {
+          print('🔍 Found matching item for discount calculation: $item');
+          
+          // Always try to get discounted price first (by default)
+          // Try to get discounted price from different possible fields
+          if (item['discounted_amount'] != null) {
+            print('🔍 Using discounted_price field: ${item['discounted_price']}');
+            if (item['discounted_amount'] is String) {
+              return double.tryParse(item['discounted_amount']) ?? _getTestPrice(testName);
+            } else if (item['discounted_amount'] is num) {
+              return item['discounted_amount'].toDouble();
+            }
+          }
+          if (item['final_price'] != null) {
+            print('🔍 Using final_price field: ${item['final_price']}');
+            if (item['final_price'] is String) {
+              return double.tryParse(item['final_price']) ?? _getTestPrice(testName);
+            } else if (item['final_price'] is num) {
+              return item['final_price'].toDouble();
+            }
+          }
+          
+          // Always calculate discounted price from original price and discount percentage
+          final originalPrice = _getTestPrice(testName);
+          if (originalPrice > 0) {
+            final discountText = widget.testDiscounts[testName] ?? '';
+            if (discountText.isNotEmpty && discountText.contains('%')) {
+              // Extract discount percentage
+              final percentMatch = RegExp(r'(\d+)%').firstMatch(discountText);
+              if (percentMatch != null) {
+                final discountPercent = int.tryParse(percentMatch.group(1) ?? '0') ?? 0;
+                final discountAmount = (originalPrice * discountPercent) / 100;
+                final discountedPrice = originalPrice - discountAmount;
+                print('🔍 Calculated discounted price: $originalPrice - $discountAmount = $discountedPrice');
+                return discountedPrice;
+              }
+            }
+          }
+          break;
+        }
+      }
+    }
+    
+    // If couldn't find discounted price, return original price
+    return _getTestPrice(testName);
+  }
+
+  // Helper method to get test price from cart data
+  double _getTestPrice(String testName) {
+    print('🔍 _getTestPrice called for: "$testName"');
+    
+    if (widget.cartData['items'] != null) {
+      final items = List<Map<String, dynamic>>.from(widget.cartData['items']);
+      for (final item in items) {
+        final itemName = item['test_name']?.toString() ?? '';
+        if (itemName == testName || itemName.toLowerCase() == testName.toLowerCase()) {
+          print('🔍 Found matching item in cart data: $item');
+          
+          // Try to get price from different possible fields
+          if (item['price'] != null) {
+            print('🔍 Found price field: ${item['price']} (type: ${item['price'].runtimeType})');
+            if (item['price'] is String) {
+              final price = double.tryParse(item['price']) ?? 0.0;
+              print('🔍 Parsed string price: $price');
+              return price;
+            } else if (item['price'] is num) {
+              final price = item['price'].toDouble();
+              print('🔍 Converted num price: $price');
+              return price;
+            }
+          }
+          if (item['test_price'] != null) {
+            print('🔍 Found test_price field: ${item['test_price']} (type: ${item['test_price'].runtimeType})');
+            if (item['test_price'] is String) {
+              final price = double.tryParse(item['test_price']) ?? 0.0;
+              print('🔍 Parsed string test_price: $price');
+              return price;
+            } else if (item['test_price'] is num) {
+              final price = item['test_price'].toDouble();
+              print('🔍 Converted num test_price: $price');
+              return price;
+            }
+          }
+          break;
+        }
+      }
+    }
+    
+    // Fallback to widget.testPrices if cart data doesn't have price
+    final fallbackPrice = widget.testPrices[testName] ?? 0.0;
+    print('🔍 Using fallback price for "$testName": $fallbackPrice');
+    return fallbackPrice;
+  }
+
+  // Helper method to get package price from cart data
+  double _getPackagePrice(String packageName) {
+    print('🔍 _getPackagePrice called for: "$packageName"');
+    
+    if (widget.cartData['items'] != null) {
+      final items = List<Map<String, dynamic>>.from(widget.cartData['items']);
+      for (final item in items) {
+        final itemName = item['test_name']?.toString() ?? '';
+        if (itemName == packageName || itemName.toLowerCase() == packageName.toLowerCase()) {
+          print('🔍 Found matching package item in cart data: $item');
+          
+          // Try to get price from different possible fields for packages
+          if (item['price'] != null) {
+            print('🔍 Found price field: ${item['price']} (type: ${item['price'].runtimeType})');
+            if (item['price'] is String) {
+              final price = double.tryParse(item['price']) ?? 0.0;
+              print('🔍 Parsed string price: $price');
+              return price;
+            } else if (item['price'] is num) {
+              final price = item['price'].toDouble();
+              print('🔍 Converted num price: $price');
+              return price;
+            }
+          }
+          if (item['baseprice'] != null) {
+            print('🔍 Found baseprice field: ${item['baseprice']} (type: ${item['baseprice'].runtimeType})');
+            if (item['baseprice'] is String) {
+              final price = double.tryParse(item['baseprice']) ?? 0.0;
+              print('🔍 Parsed string baseprice: $price');
+              return price;
+            } else if (item['baseprice'] is num) {
+              final price = item['baseprice'].toDouble();
+              print('🔍 Converted num baseprice: $price');
+              return price;
+            }
+          }
+          break;
+        }
+      }
+    }
+    
+    // Fallback to widget.testPrices if cart data doesn't have price
+    final fallbackPrice = widget.testPrices[packageName] ?? 0.0;
+    print('🔍 Using fallback price for package "$packageName": $fallbackPrice');
+    return fallbackPrice;
+  }
+
+  // Helper method to get package discounted price from cart data
+  double _getPackageDiscountedPrice(String packageName) {
+    print('🔍 _getPackageDiscountedPrice called for: "$packageName"');
+    
+    if (widget.cartData['items'] != null) {
+      final items = List<Map<String, dynamic>>.from(widget.cartData['items']);
+      for (final item in items) {
+        final itemName = item['test_name']?.toString() ?? '';
+        if (itemName == packageName || itemName.toLowerCase() == packageName.toLowerCase()) {
+          print('🔍 Found matching package item in cart data: $item');
+          
+          // Try to get discounted price from different possible fields for packages
+          if (item['discounted_amount'] != null) {
+            print('🔍 Found discounted_amount field: ${item['discounted_amount']} (type: ${item['discounted_amount'].runtimeType})');
+            if (item['discounted_amount'] is String) {
+              final price = double.tryParse(item['discounted_amount']) ?? _getPackagePrice(packageName);
+              print('🔍 Parsed string discounted_amount: $price');
+              return price;
+            } else if (item['discounted_amount'] is num) {
+              final price = item['discounted_amount'].toDouble();
+              print('🔍 Converted num discounted_amount: $price');
+              return price;
+            }
+          }
+          if (item['final_price'] != null) {
+            print('🔍 Found final_price field: ${item['final_price']} (type: ${item['final_price'].runtimeType})');
+            if (item['final_price'] is String) {
+              final price = double.tryParse(item['final_price']) ?? _getPackagePrice(packageName);
+              print('🔍 Parsed string final_price: $price');
+              return price;
+            } else if (item['final_price'] is num) {
+              final price = item['final_price'].toDouble();
+              print('🔍 Converted num final_price: $price');
+              return price;
+            }
+          }
+          if (item['discountedprice'] != null) {
+            print('🔍 Found discountedprice field: ${item['discountedprice']} (type: ${item['discountedprice'].runtimeType})');
+            if (item['discountedprice'] is String) {
+              final price = double.tryParse(item['discountedprice']) ?? _getPackagePrice(packageName);
+              print('🔍 Parsed string discountedprice: $price');
+              return price;
+            } else if (item['discountedprice'] is num) {
+              final price = item['discountedprice'].toDouble();
+              print('🔍 Converted num discountedprice: $price');
+              return price;
+            }
+          }
+          break;
+        }
+      }
+    }
+    
+    // If no discounted price found, return the original price
+    return _getPackagePrice(packageName);
+  }
+
+  Future<bool> _clearCart() async {
+    print('🛒 Clearing cart from database and local storage...');
+    try {
+      // Clear cart from database
       final result = await _apiService.clearCart(context);
       if (result['success']) {
-        print('✅ Cart cleared successfully');
+        // Clear cart from local storage
+        await StorageService.clearCart();
+        print('✅ Cart cleared successfully from both database and local storage');
         return true;
       } else {
-        print('❌ Failed to clear cart: ${result['message']}');
+        print('❌ Failed to clear cart from database: ${result['message']}');
         return false;
       }
     } catch (e) {
@@ -254,49 +565,56 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
-  Future<void> _removeFromCart(String testName) async {
-    print('🛒 Removing test: $testName from cart...');
+  Future<void> _removeFromCart(String testId) async {
+    print('🛒 Removing test ID: $testId from cart...');
+    print('🛒 Current selectedTests: $selectedTests');
+    print('🛒 Cart data available: ${widget.cartData != null}');
     try {
-      // Find the cart item ID for this test
+      // Find the cart item ID for this test ID
       String? cartItemId;
       
-      // Check in cart data for the item
-      // Check in tests array
-      if (widget.cartData!['tests'] != null) {
-        for (final test in widget.cartData!['tests']) {
-          if (test['name'] == testName) {
-            cartItemId = test['lab_test_id']?.toString() ?? test['id']?.toString();
-            break;
-          }
-        }
-      }
+      print('🔍 Looking for cart item with test ID: $testId');
+      print('🔍 Available cart data keys: ${widget.cartData?.keys}');
       
-      // Check in packages array
-      if (cartItemId == null && widget.cartData!['packages'] != null) {
-        for (final package in widget.cartData!['packages']) {
-          if (package['name'] == testName) {
-            cartItemId = package['cart_item_id']?.toString() ?? package['id']?.toString();
+      // The main items array should contain all cart items with proper structure
+      if (widget.cartData != null && widget.cartData!['items'] != null) {
+        final items = List<Map<String, dynamic>>.from(widget.cartData!['items']);
+        print('🔍 Found ${items.length} items in cart data');
+        
+        for (final item in items) {
+          final itemTestId = item['lab_test_id']?.toString() ?? item['lab_package_id']?.toString() ?? item['id']?.toString();
+          print('🔍 Checking item test ID: $itemTestId against target: $testId');
+          
+          if (itemTestId == testId) {
+            cartItemId = item['id']?.toString() ?? item['cart_id']?.toString();
+            print('✅ Found matching item with test ID: $itemTestId and cart ID: $cartItemId');
             break;
           }
         }
-      }
-      
-      // Check in items array
-      if (cartItemId == null && widget.cartData!['items'] != null) {
-        for (final item in widget.cartData!['items']) {
-          if (item['name'] == testName) {
-            cartItemId = item['cart_item_id']?.toString() ?? item['id']?.toString();
-            break;
-          }
-        }
+      } else {
+        print('❌ No items array found in cart data');
+        print('❌ Cart data structure: ${widget.cartData}');
       }
           
       if (cartItemId != null && cartItemId.isNotEmpty) {
-        print('🛒 Found cart item ID: $cartItemId for test: $testName');
+        print('🛒 Found cart item ID: $cartItemId for test ID: $testId');
         final result = await _apiService.removeFromCart(cartItemId);
         if (result['success']) {
           print('✅ Item removed from cart successfully');
+          
+          // Update local state to remove the test
+          setState(() {
+            selectedTests.remove(testId);
+          });
+          
+          // Call parent callback if available
+          if (widget.onRemoveFromCart != null) {
+            print('📞 Calling parent callback for removed test ID: $testId');
+            widget.onRemoveFromCart!(testId);
+          }
+          
           // Show success message
+          final testName = testIdToName[testId] ?? testId;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('$testName removed from cart'),
@@ -305,6 +623,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           );
         } else {
           print('❌ Failed to remove item from cart: ${result['message']}');
+          final testName = testIdToName[testId] ?? testId;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Failed to remove $testName from cart'),
@@ -313,7 +632,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           );
         }
       } else {
-        print('❌ Could not find cart item ID for test: $testName');
+        print('❌ Could not find cart item ID for test ID: $testId');
+        final testName = testIdToName[testId] ?? testId;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Could not remove $testName from cart'),
@@ -323,12 +643,31 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       }
     } catch (e) {
       print('❌ Error removing item from cart: $e');
+      final testName = testIdToName[testId] ?? testId;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error removing $testName from cart'),
           backgroundColor: Colors.red,
         ),
       );
+    }
+  }
+
+  // Convert display payment method to API expected value
+  String _getApiPaymentMode(String displayPaymentMethod) {
+    switch (displayPaymentMethod) {
+      case 'Pay at Collection':
+      case 'Cash on Collection':
+        return 'CASH';
+      case 'Online Payment':
+      case 'Card Payment':
+      case 'Debit/Credit Card':
+        return 'CARD';
+      case 'Wallet':
+        return 'WALLET';
+      default:
+        print('⚠️ Unknown payment method: $displayPaymentMethod, defaulting to CARD');
+        return 'CARD';
     }
   }
 
@@ -362,85 +701,98 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       
       print('📋 Cart Data: ${widget.cartData}');
       print('📋 Selected Tests: $selectedTests');
+      print('📋 Test ID to Name Mapping: $testIdToName');
       
-      // Extract test IDs from selected tests
+      // Debug cart items structure
+      if (widget.cartData['items'] != null) {
+        final items = List<Map<String, dynamic>>.from(widget.cartData['items']);
+        print('📋 Cart Items Structure:');
+        for (int i = 0; i < items.length; i++) {
+          final item = items[i];
+          print('📋 Item $i:');
+          print('📋   test_name: ${item['test_name']}');
+          print('📋   lab_test_id: ${item['lab_test_id']}');
+          print('📋   lab_package_id: ${item['lab_package_id']}');
+          print('📋   id: ${item['id']}');
+          print('📋   type: ${item['type']}');
+        }
+      }
+      
+      // Extract test IDs from selected tests (now contains IDs directly)
       final List<String> labTests = [];
       final List<String> packages = [];
       
-      // Since selectedTests contains test names, we need to find the corresponding test objects
-      for (final testName in selectedTests) {
-        print('📋 Processing test: $testName');
+      // Since selectedTests now contains IDs, we need to categorize them as tests or packages
+      for (final testId in selectedTests) {
+        print('📋 Processing test ID: $testId');
         
-        // First try to find in cart data
+        // Find the corresponding item in cart data to determine if it's a test or package
         bool foundInCart = false;
         
-        // Check packages in cart data
-        if (widget.cartData['packages'] != null) {
-          for (final package in widget.cartData['packages']) {
-            print('📋 Checking package: ${package['name']} vs $testName');
-            if (package['name'] == testName || package['title'] == testName) {
-              final packageId = package['id']?.toString();
-              if (packageId != null && packageId.isNotEmpty) {
-                packages.add(packageId);
-                print('📋 Found package: $testName with ID: $packageId');
-                foundInCart = true;
-                break;
-              }
-            }
-          }
-        }
-        
-        // Check tests in cart data
-        if (!foundInCart && widget.cartData['items'] != null) {
-          for (final test in widget.cartData['items']) {
-            print('📋 Checking test: ${test['name']} vs $testName');
-           // if (test['name'] == testName || test['title'] == testName) {
-              final testId = test['lab_test_id']?.toString();
-              if (testId != null && testId.isNotEmpty) {
-                labTests.add(testId);
-                print('📋 Found test: $testName with ID: $testId');
-                foundInCart = true;
-                break;
-              }
-           // }
-          }
-        }
-        
-        // Check if cart data has items array (alternative structure)
-        if (!foundInCart && widget.cartData['items'] != null) {
+        if (widget.cartData['items'] != null) {
           for (final item in widget.cartData['items']) {
-            print('📋 Checking item: ${item['name']} vs $testName');
-            if (item['name'] == testName || item['title'] == testName) {
-              final itemId = item['id']?.toString();
-              if (itemId != null && itemId.isNotEmpty) {
-                if (item['type'] == 'package') {
-                  packages.add(itemId);
-                  print('📋 Found package item: $testName with ID: $itemId');
+            final itemTestId = item['lab_test_id']?.toString();
+            final itemPackageId = item['lab_package_id']?.toString();
+            final itemId = item['id']?.toString();
+            
+            // Check if this item matches our test ID
+            if (itemTestId == testId || itemPackageId == testId || itemId == testId) {
+              print('📋 Found matching item in cart: ${item['test_name']}');
+              print('📋 Item details - lab_test_id: $itemTestId, lab_package_id: $itemPackageId, id: $itemId');
+              
+              // Determine if it's a package or test based on which ID field is present
+              if (itemPackageId != null && itemPackageId.isNotEmpty) {
+                packages.add(itemPackageId);
+                print('📋 Found package with ID: $itemPackageId');
+              } else if (itemTestId != null && itemTestId.isNotEmpty) {
+                labTests.add(itemTestId);
+                print('📋 Found test with ID: $itemTestId');
+              } else {
+                // Fallback: use the item ID and determine type from item structure
+                final testName = item['test_name']?.toString().toLowerCase() ?? '';
+                final itemType = item['type']?.toString().toLowerCase() ?? '';
+                
+                bool isPackage = itemType == 'package' || 
+                                testName.contains('package') || 
+                                testName.contains('combo') || 
+                                testName.contains('bundle') ||
+                                testName.contains('profile');
+                
+                if (isPackage) {
+                  packages.add(itemId!);
+                  print('📋 Found package item with ID: $itemId (name: ${item['test_name']})');
                 } else {
-                  labTests.add(itemId);
-                  print('📋 Found test item: $testName with ID: $itemId');
+                  labTests.add(itemId!);
+                  print('📋 Found test item with ID: $itemId (name: ${item['test_name']})');
                 }
-                foundInCart = true;
-                break;
               }
+              foundInCart = true;
+              break;
             }
           }
         }
         
-        // If not found in cart data, use placeholder IDs
+        // If not found in cart data, try to determine type from testIdToName mapping
         if (!foundInCart) {
-          // Determine if it's a package or test based on available tests
-          final test = _availableTests.firstWhere(
-            (test) => test['name'] == testName,
-            orElse: () => {'id': '', 'type': 'test'},
-          );
+          final testName = testIdToName[testId];
+          print('📋 Not found in cart data, checking testIdToName for: $testId -> $testName');
           
-          if (test['type'] == 'package') {
-            packages.add('550e8400-e29b-41d4-a716-446655440005'); // Placeholder package ID
-            print('📋 Using placeholder package ID for: $testName');
+          // More robust package detection
+          bool isPackage = false;
+          if (testName != null) {
+            final lowerName = testName.toLowerCase();
+            isPackage = lowerName.contains('package') || 
+                       lowerName.contains('combo') || 
+                       lowerName.contains('bundle') ||
+                       lowerName.contains('profile');
+          }
+          
+          if (isPackage) {
+            packages.add(testId);
+            print('📋 Added as package based on name: $testName');
           } else {
-          //  labTests.add('550e8400-e29b-41d4-a716-446655440003'); // Placeholder test ID
-            print('📋 Using placeholder test ID for: $testName');
+            labTests.add(testId);
+            print('📋 Added as test based on name: $testName');
           }
         }
       }
@@ -465,11 +817,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       final appointmentDate = selectedDate.toIso8601String().split('T')[0];
       final appointmentTime = selectedTime;
       
-      // Determine payment mode
-      String paymentMode = 'card';
+      // Determine payment mode using helper function
+      String paymentMode = _getApiPaymentMode(selectedPaymentMethod);
+      
+      // Override with wallet if wallet covers full amount
       if (useWalletBalance && amountAfterWallet <= 0) {
-        paymentMode = 'wallet';
+        paymentMode = 'WALLET';
       }
+      
+      print('💳 Payment method conversion: "$selectedPaymentMethod" → "$paymentMode"');
       
       print('📋 Booking Data:');
       print('📋 Lab ID: $labId');
@@ -517,7 +873,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
       print('📋 Booking API Result: $result');
 
-      if (result['status'] == 'success') {
+      if (result['success'] == true) {
         print('✅ Booking created successfully');
         setState(() {
           isBooking = false;
@@ -525,6 +881,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         
         // Clear the cart after successful booking
         await _clearCart();
+        
+        // Notify parent that cart has been cleared
+        if (widget.onCartCleared != null) {
+          print('🔄 Notifying parent that cart has been cleared');
+          widget.onCartCleared!();
+        }
         
         _showSuccessPopup();
       } else {
@@ -587,6 +949,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     });
     
     try {
+      // Try to load from API first to get session parameters
       final apiService = ApiService();
       final dateString = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
       print('🔄 Calling API with orgId: ${widget.organizationId}, date: $dateString');
@@ -598,40 +961,174 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       
       print('🔄 API result: $result');
       
+      // Extract session parameters from API response or use defaults
+      String sessionStart = '09:00:00';
+      String sessionEnd = '19:00:00';
+      int slotDurationMin = 30;
+      String sessionName = 'Working Hours';
+      
+      if (result['success'] && result['data'] != null && result['data']['timeslots'] != null) {
+        final timeslots = List<Map<String, dynamic>>.from(result['data']['timeslots']);
+        if (timeslots.isNotEmpty) {
+          final firstSession = timeslots[0];
+          sessionStart = firstSession['session_start'] ?? '09:00:00';
+          sessionEnd = firstSession['session_end'] ?? '19:00:00';
+          slotDurationMin = firstSession['slot_duration_min'] ?? 30;
+          sessionName = firstSession['session_name'] ?? 'Working Hours';
+          
+          // Ensure session times have seconds if missing
+          if (!sessionStart.contains(':') || sessionStart.split(':').length < 3) {
+            sessionStart = sessionStart.contains(':') ? '$sessionStart:00' : '09:00:00';
+          }
+          if (!sessionEnd.contains(':') || sessionEnd.split(':').length < 3) {
+            sessionEnd = sessionEnd.contains(':') ? '$sessionEnd:00' : '19:00:00';
+          }
+          
+          print('🔄 Extracted session parameters from API:');
+          print('🔄 Session Start: $sessionStart');
+          print('🔄 Session End: $sessionEnd');
+          print('🔄 Slot Duration: ${slotDurationMin}min');
+        }
+      }
+      
+      // Generate time slots based on dynamic session parameters
+      final generatedSlots = _generateTimeSlots(
+        sessionStart: sessionStart,
+        sessionEnd: sessionEnd,
+        slotDurationMin: slotDurationMin,
+      );
+      
+      // Create timeslot data structure with generated slots
+      final generatedTimeslotData = {
+        'timeslots': [
+          {
+            'session_name': sessionName,
+            'session_start': sessionStart.substring(0, 5), // Remove seconds for display
+            'session_end': sessionEnd.substring(0, 5),     // Remove seconds for display
+            'slot_duration_min': slotDurationMin,
+            'slots': generatedSlots,
+          }
+        ]
+      };
+      
+      print('🔄 Generated timeslot data: $generatedTimeslotData');
+      
       if (result['success'] && mounted) {
+        // If API returns data, merge it with generated slots
+        final apiData = result['data'];
+        final mergedData = _mergeTimeslotData(generatedTimeslotData, apiData);
+        
         setState(() {
-          timeslotData = result['data'];
+          timeslotData = mergedData;
           isLoadingTimeslots = false;
         });
-        print('✅ Timeslots loaded successfully');
-        print('✅ Timeslot data: $timeslotData');
+        print('✅ Timeslots loaded and merged successfully');
+        print('✅ Final timeslot data: $timeslotData');
       } else {
+        // If API fails, use generated slots as fallback
         if (mounted) {
           setState(() {
+            timeslotData = generatedTimeslotData;
             isLoadingTimeslots = false;
           });
-          print('❌ API call failed: ${result['message']}');
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(result['message'] ?? 'Failed to load timeslots'),
-              backgroundColor: Colors.red,
-            ),
-          );
+          print('⚠️ API call failed, using generated slots: ${result['message']}');
         }
       }
     } catch (e) {
       print('❌ Error in _loadTimeslots: $e');
       if (mounted) {
+        // Even if there's an error, show generated slots
+        final fallbackSlots = _generateTimeSlots(
+          sessionStart: '09:00:00',
+          sessionEnd: '19:00:00',
+          slotDurationMin: 30,
+        );
+        
         setState(() {
+          timeslotData = {
+            'timeslots': [
+              {
+                'session_name': 'Working Hours',
+                'session_start': '09:00',
+                'session_end': '19:00',
+                'slot_duration_min': 30,
+                'slots': fallbackSlots,
+              }
+            ]
+          };
           isLoadingTimeslots = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error loading timeslots: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        print('⚠️ Error occurred, using fallback generated slots');
       }
+    }
+  }
+
+  // Merge generated timeslot data with API response to preserve availability information
+  Map<String, dynamic> _mergeTimeslotData(Map<String, dynamic> generatedData, Map<String, dynamic> apiData) {
+    print('🔄 Merging generated slots with API data');
+    
+    try {
+      // Start with generated data as base
+      final mergedData = Map<String, dynamic>.from(generatedData);
+      
+      // If API data has timeslots, use it to update availability
+      if (apiData['timeslots'] != null) {
+        final apiTimeslots = List<Map<String, dynamic>>.from(apiData['timeslots']);
+        final generatedTimeslots = List<Map<String, dynamic>>.from(mergedData['timeslots']);
+        
+        // For each generated session, check if API has corresponding data
+        for (int i = 0; i < generatedTimeslots.length; i++) {
+          final generatedSession = generatedTimeslots[i];
+          final generatedSlots = List<Map<String, dynamic>>.from(generatedSession['slots']);
+          
+          // Find matching session in API data (if any)
+          final matchingApiSession = apiTimeslots.firstWhere(
+            (session) => session['session_name'] == generatedSession['session_name'],
+            orElse: () => <String, dynamic>{},
+          );
+          
+          if (matchingApiSession.isNotEmpty && matchingApiSession['slots'] != null) {
+            final apiSlots = List<Map<String, dynamic>>.from(matchingApiSession['slots']);
+            
+            // Update generated slots with API availability data
+            for (int j = 0; j < generatedSlots.length; j++) {
+              final generatedSlot = generatedSlots[j];
+              
+              // Find matching slot in API data
+              final matchingApiSlot = apiSlots.firstWhere(
+                (apiSlot) => apiSlot['start_time'] == generatedSlot['start_time'] && 
+                            apiSlot['end_time'] == generatedSlot['end_time'],
+                orElse: () => <String, dynamic>{},
+              );
+              
+              if (matchingApiSlot.isNotEmpty) {
+                // Update with API data (status, doctor, etc.)
+                generatedSlots[j] = {
+                  ...generatedSlot,
+                  'status': matchingApiSlot['status'] ?? 'available',
+                  'doctor': matchingApiSlot['doctor'] ?? generatedSlot['doctor'],
+                };
+              }
+            }
+            
+            // Update the session with merged slots
+            generatedTimeslots[i] = {
+              ...generatedSession,
+              'slots': generatedSlots,
+            };
+          }
+        }
+        
+        mergedData['timeslots'] = generatedTimeslots;
+      }
+      
+      print('✅ Successfully merged timeslot data');
+      return mergedData;
+      
+    } catch (e) {
+      print('❌ Error merging timeslot data: $e');
+      // Return generated data as fallback
+      return generatedData;
     }
   }
 
@@ -763,37 +1260,61 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                   ],
                                 ),
                               ),
-                              // Slots grid
+                              // Slots grid (3 per row, future slots only)
                               Padding(
                                 padding: const EdgeInsets.all(16),
-                                child: Column(
-                                  children: List.generate(
-                                    (slots.length / 3).ceil(),
-                                    (rowIndex) {
-                                      final startIndex = rowIndex * 3;
-                                      return Padding(
-                                        padding: const EdgeInsets.only(bottom: 8),
-                                        child: Row(
-                                          children: List.generate(
-                                            (startIndex + 3 <= slots.length) ? 3 : slots.length - startIndex,
-                                            (colIndex) {
-                                              final slotIndex = startIndex + colIndex;
-                                              return Expanded(
-                                                child: Padding(
-                                                  padding: EdgeInsets.only(right: colIndex < 2 ? 8 : 0),
-                                                  child: _buildSlotItem(
-                                                    slots[slotIndex],
-                                                    sessionName,
-                                                  ),
-                                                ),
-                                              );
-                                            },
+                                child: () {
+                                  // Filter future slots
+                                  final futureSlots = _filterFutureSlots(slots, selectedDate);
+                                  
+                                  if (futureSlots.isEmpty) {
+                                    return const Center(
+                                      child: Padding(
+                                        padding: EdgeInsets.all(20),
+                                        child: Text(
+                                          'No available time slots for this date',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            color: Colors.grey,
                                           ),
+                                          textAlign: TextAlign.center,
                                         ),
-                                      );
-                                    },
-                                  ),
-                                ),
+                                      ),
+                                    );
+                                  }
+                                  
+                                  return Column(
+                                    children: List.generate(
+                                      (futureSlots.length / 3).ceil(),
+                                      (rowIndex) {
+                                        final startIndex = rowIndex * 3;
+                                        final endIndex = (startIndex + 3 <= futureSlots.length) ? startIndex + 3 : futureSlots.length;
+                                        final rowSlots = futureSlots.sublist(startIndex, endIndex);
+                                        
+                                        return Padding(
+                                          padding: const EdgeInsets.only(bottom: 8),
+                                          child: Row(
+                                            children: [
+                                              ...rowSlots.asMap().entries.map((entry) {
+                                                final index = entry.key;
+                                                final slot = entry.value;
+                                                return [
+                                                  _buildSlotItem(slot, sessionName),
+                                                  if (index < rowSlots.length - 1) const SizedBox(width: 8),
+                                                ];
+                                              }).expand((element) => element),
+                                              // Fill remaining space if less than 3 slots in this row
+                                              ...List.generate(
+                                                3 - rowSlots.length,
+                                                (index) => const Expanded(child: SizedBox()),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  );
+                                }(),
                               ),
                             ],
                           ),
@@ -819,13 +1340,21 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   // Get the actual payable amount based on payment method
   double get actualPayableAmount {
-    // If user is paying online or using full wallet balance, apply discounts
-    if (selectedPaymentMethod == 'Online Payment' || 
-        (useWalletBalance && walletBalance >= totalDiscountedPrice)) {
-      return totalDiscountedPrice - couponDiscount;
+    print('🔍 actualPayableAmount calculation:');
+    print('🔍   selectedPaymentMethod: $selectedPaymentMethod');
+    print('🔍   useWalletBalance: $useWalletBalance');
+    print('🔍   walletCoversFullAmount: $walletCoversFullAmount');
+    print('🔍   shouldApplyDiscount: $shouldApplyDiscount');
+    
+    // Use centralized discount logic
+    if (shouldApplyDiscount) {
+      final discountedAmount = totalDiscountedPrice - couponDiscount;
+      print('🔍   Using discounted price: $totalDiscountedPrice - $couponDiscount = $discountedAmount');
+      return discountedAmount;
     } else {
-      // If partial wallet payment or other methods, charge original price
-      return totalOriginalPrice - couponDiscount;
+      final originalAmount = totalOriginalPrice - couponDiscount;
+      print('🔍   Using original price: $totalOriginalPrice - $couponDiscount = $originalAmount');
+      return originalAmount;
     }
   }
 
@@ -841,8 +1370,27 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   // Check if discount should be applied
   bool get shouldApplyDiscount {
-    return selectedPaymentMethod == 'Online Payment' || 
-           (useWalletBalance && walletBalance >= totalDiscountedPrice);
+    // Check if user is paying full amount via online payment or wallet
+    bool isFullPaymentOnline = selectedPaymentMethod == 'Online Payment';
+    bool isFullPaymentWallet = useWalletBalance && walletCoversFullAmount;
+    
+    final shouldApply = (isFullPaymentOnline || isFullPaymentWallet) &&
+                        selectedPaymentMethod != 'Pay at Collection';
+    
+    print('🔍 shouldApplyDiscount: $shouldApply (payment: $selectedPaymentMethod, wallet: $useWalletBalance, walletCoversFullAmount: $walletCoversFullAmount)');
+    return shouldApply;
+  }
+
+  // Check if wallet balance covers the full amount after coupon discount
+  bool get walletCoversFullAmount {
+    // Check if wallet covers the discounted amount (which is what we want to check for full wallet payment)
+    final finalAmount = totalDiscountedPrice - couponDiscount;
+    return walletBalance >= finalAmount;
+  }
+
+  // Check if payment methods should be disabled (when wallet covers full amount)
+  bool get shouldDisablePaymentMethods {
+    return walletCoversFullAmount && useWalletBalance;
   }
 
   void _showAddMoreTestsBottomSheet() {
@@ -1897,22 +2445,108 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   void _addMoreTests() {
     print('🔄 Add more tests button pressed');
-    
-    // Navigate back to tests tab
-    // First pop to go back to lab selection screen
-    Navigator.of(context).pop(); // Close checkout screen
-    // Then pop again to go back to tests tab
-    Navigator.of(context).pop(); // Close lab selection screen to go back to tests tab
-    
-    // Show a helpful message to the user
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('You can now add more tests to your cart'),
-        backgroundColor: Colors.green,
-        duration: Duration(seconds: 2),
-      ),
+    _showAddMoreItemsBottomSheet();
+  }
+
+  void _addMorePackages() {
+    print('🔄 Add more packages button pressed');
+    _showAddMoreItemsBottomSheet();
+  }
+
+  // Show add more items bottom sheet
+  void _showAddMoreItemsBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) {
+        return _AddMoreItemsBottomSheet(
+          labId: widget.organizationId,
+          labName: widget.selectedLab,
+          cartItems: selectedTests.union(selectedPackages),
+          onItemAdded: _onItemAddedToCart,
+        );
+      },
     );
   }
+
+  // Wrapper method for when items are added to cart
+  Future<void> _onItemAddedToCart() async {
+    await _refreshCartData();
+    setState(() {}); // Refresh the UI
+  }
+
+  // Refresh cart data after changes
+  Future<void> _refreshCartData() async {
+    print('🔄 Refreshing cart data...');
+    
+    try {
+      // Fetch fresh cart data from API
+      final cartResult = await _apiService.getCart();
+      
+      if (cartResult['success']) {
+        final freshCartData = cartResult['data'];
+        print('✅ Fresh cart data received: $freshCartData');
+        
+        // Update cart data - we need to handle this differently since cartData is final
+        // We'll update the local state instead
+        setState(() {
+          // Update the cart items based on fresh data
+          _updateCartFromFreshData(freshCartData);
+        });
+      }
+    } catch (e) {
+      print('❌ Error refreshing cart data: $e');
+    }
+  }
+
+  // Update cart from fresh data
+  void _updateCartFromFreshData(Map<String, dynamic> freshCartData) {
+    // Clear existing items
+    selectedTests.clear();
+    selectedPackages.clear();
+    testIdToName.clear();
+    packageIdToName.clear();
+    
+    // Create mapping from test IDs and package IDs to names using fresh cart data
+    if (freshCartData['items'] != null) {
+      final items = List<Map<String, dynamic>>.from(freshCartData['items']);
+      for (final item in items) {
+        final testId = item['lab_test_id']?.toString();
+        final packageId = item['lab_package_id']?.toString();
+        final itemName = item['test_name']?.toString() ?? '';
+        
+        if (testId != null && testId.isNotEmpty && itemName.isNotEmpty) {
+          testIdToName[testId] = itemName;
+        }
+        if (packageId != null && packageId.isNotEmpty && itemName.isNotEmpty) {
+          packageIdToName[packageId] = itemName;
+        }
+      }
+    }
+    
+    // Separate tests and packages from fresh cart items
+    if (freshCartData['items'] != null) {
+      final items = List<Map<String, dynamic>>.from(freshCartData['items']);
+      for (final item in items) {
+        final testId = item['lab_test_id']?.toString();
+        final packageId = item['lab_package_id']?.toString();
+        
+        if (testId != null && testId.isNotEmpty) {
+          selectedTests.add(testId);
+        }
+        if (packageId != null && packageId.isNotEmpty) {
+          selectedPackages.add(packageId);
+        }
+      }
+    }
+    
+    print('🔄 Updated local state - Tests: $selectedTests, Packages: $selectedPackages');
+    print('🔄 Test ID to Name mapping: $testIdToName');
+    print('🔄 Package ID to Name mapping: $packageIdToName');
+  }
+
+
 
   void _showSuccessPopup() {
     showDialog(
@@ -1921,52 +2555,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       builder: (BuildContext context) {
         return _AnimatedSuccessDialog(
           onAnimationComplete: () {
-            print('🔄 Animation complete, navigating to order detail');
+            print('🔄 Animation complete, navigating back to home');
             try {
               Navigator.of(context).pop();
-              // Navigate to order detail page with sample order data
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => OrderDetailScreen(
-                                      order: {
-                    'orderId': 'ORD-${DateTime.now().millisecondsSinceEpoch}',
-                    'orderDate': _formatDateTime(DateTime.now()),
-                    'status': 'confirmed',
-                    'scheduledDate': _formatDateTime(selectedDate),
-                    'scheduledTime': selectedTime,
-                    'collectionType': isHomeCollection ? 'Home Collection' : 'Lab Visit',
-                    'tests': widget.cartItems.map((testName) => {
-                      'name': testName,
-                      'description': 'Test description',
-                      'price': (widget.testPrices[testName] ?? 0.0).toString(),
-                    }).toList(),
-                    'lab': {
-                      'name': widget.selectedLab,
-                      'address': 'Lab Address',
-                      'rating': '4.5',
-                      'reviews': '120',
-                      'phone': '+91 98765 43210',
-                      'email': 'info@lab.com',
-                      'workingHours': '8:00 AM - 8:00 PM',
-                    },
-                    'payment': {
-                      'method': 'Online Payment',
-                      'transactionId': 'TXN-${DateTime.now().millisecondsSinceEpoch}',
-                      'subtotal': widget.labOriginalPrice.toString(),
-                      'discount': widget.labDiscount,
-                      'total': widget.labDiscountedPrice.toString(),
-                    },
-                    'collection': {
-                      'address': selectedAddress ?? 'Not specified',
-                      'contactPerson': selectedPatient,
-                      'contactPhone': '+91 98765 43210',
-                      'instructions': 'Please keep the sample ready for collection',
-                    },
-                  },
-                  ),
-                ),
-              );
-              print('✅ Navigation to OrderDetailScreen successful');
+              // Navigate back to landing page after successful booking
+              Navigator.of(context).pushReplacementNamed('/landing');
+              print('✅ Navigation to landing page successful');
             } catch (e) {
               print('❌ Navigation error: $e');
               // Fallback: navigate to home
@@ -2021,67 +2615,164 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
+  // Generate time slots based on session parameters
+  List<Map<String, dynamic>> _generateTimeSlots({
+    required String sessionStart, // '09:00:00'
+    required String sessionEnd,   // '19:00:00'
+    required int slotDurationMin, // 30
+  }) {
+    print('🔄 Generating time slots from $sessionStart to $sessionEnd with ${slotDurationMin}min intervals');
+    
+    List<Map<String, dynamic>> slots = [];
+    
+    try {
+      // Parse start and end times
+      final startParts = sessionStart.split(':');
+      final endParts = sessionEnd.split(':');
+      
+      if (startParts.length < 2 || endParts.length < 2) {
+        print('❌ Invalid time format');
+        return slots;
+      }
+      
+      final startHour = int.parse(startParts[0]);
+      final startMinute = int.parse(startParts[1]);
+      final endHour = int.parse(endParts[0]);
+      final endMinute = int.parse(endParts[1]);
+      
+      // Create DateTime objects for easier calculation
+      final today = DateTime.now();
+      var currentSlotStart = DateTime(today.year, today.month, today.day, startHour, startMinute);
+      final sessionEndTime = DateTime(today.year, today.month, today.day, endHour, endMinute);
+      
+      print('🔄 Session start: $currentSlotStart');
+      print('🔄 Session end: $sessionEndTime');
+      
+      int slotIndex = 1;
+      
+      // Generate slots until we reach the session end time
+      while (currentSlotStart.add(Duration(minutes: slotDurationMin)).isBefore(sessionEndTime) || 
+             currentSlotStart.add(Duration(minutes: slotDurationMin)).isAtSameMomentAs(sessionEndTime)) {
+        
+        final slotEnd = currentSlotStart.add(Duration(minutes: slotDurationMin));
+        
+        // Format times as HH:mm for consistency with API
+        final startTimeStr = '${currentSlotStart.hour.toString().padLeft(2, '0')}:${currentSlotStart.minute.toString().padLeft(2, '0')}';
+        final endTimeStr = '${slotEnd.hour.toString().padLeft(2, '0')}:${slotEnd.minute.toString().padLeft(2, '0')}';
+        
+        slots.add({
+          'id': slotIndex,
+          'start_time': startTimeStr,
+          'end_time': endTimeStr,
+          'status': 'available', // Default to available
+          'doctor': {
+            'name': 'Available', // Default doctor name
+            'id': 'default',
+          },
+        });
+        
+        print('🔄 Generated slot ${slotIndex}: $startTimeStr - $endTimeStr');
+        
+        // Move to next slot
+        currentSlotStart = slotEnd;
+        slotIndex++;
+      }
+      
+      print('✅ Generated ${slots.length} time slots');
+      return slots;
+      
+    } catch (e) {
+      print('❌ Error generating time slots: $e');
+      return slots;
+    }
+  }
+
+  // Filter timeslots to show only future times
+  List<Map<String, dynamic>> _filterFutureSlots(List<Map<String, dynamic>> slots, DateTime selectedDate) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final slotDate = DateTime(selectedDate.year, selectedDate.month, selectedDate.day);
+    
+    // If selected date is not today, return all slots
+    if (!slotDate.isAtSameMomentAs(today)) {
+      return slots;
+    }
+    
+    // If it's today, filter out past slots
+    return slots.where((slot) {
+      try {
+        final startTime = slot['start_time']?.toString() ?? '';
+        if (startTime.isEmpty) return false;
+        
+        final timeParts = startTime.split(':');
+        if (timeParts.length < 2) return false;
+        
+        final hour = int.tryParse(timeParts[0]) ?? 0;
+        final minute = int.tryParse(timeParts[1]) ?? 0;
+        
+        final slotDateTime = DateTime(selectedDate.year, selectedDate.month, selectedDate.day, hour, minute);
+        
+        // Show slots that are at least 30 minutes in the future
+        return slotDateTime.isAfter(now.add(const Duration(minutes: 30)));
+      } catch (e) {
+        print('❌ Error filtering slot: $e');
+        return true; // Keep slot if there's an error
+      }
+    }).toList();
+  }
+
   Widget _buildSlotItem(Map<String, dynamic> slot, String sessionName) {
     final isAvailable = slot['status'] == 'available';
     final isSelected = selectedSession == sessionName && 
                      selectedSlot == '${slot['start_time']} - ${slot['end_time']}';
-    final doctor = slot['doctor'] as Map<String, dynamic>?;
     
-    return InkWell(
-      onTap: isAvailable ? () {
-        setState(() {
-          selectedSession = sessionName;
-          selectedSlot = '${slot['start_time']} - ${slot['end_time']}';
-          selectedDoctor = doctor?['name'] ?? '';
-          selectedTime = '${slot['start_time']} - ${slot['end_time']}';
-        });
-        Navigator.pop(context);
-      } : null,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-        decoration: BoxDecoration(
-          color: isSelected 
-              ? AppColors.primaryBlue 
-              : isAvailable 
-                  ? Colors.grey[100] 
-                  : Colors.grey[300],
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
+    return Expanded(
+      child: InkWell(
+        onTap: isAvailable ? () {
+          setState(() {
+            selectedSession = sessionName;
+            selectedSlot = '${slot['start_time']} - ${slot['end_time']}';
+            selectedDoctor = slot['doctor']?['name'] ?? '';
+            selectedTime = _formatTimeTo12Hour(slot['start_time'] ?? '');
+          });
+          Navigator.pop(context);
+        } : null,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
             color: isSelected 
                 ? AppColors.primaryBlue 
-                : Colors.grey[300]!,
+                : isAvailable 
+                    ? Colors.white
+                    : Colors.grey[100],
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: isSelected 
+                  ? AppColors.primaryBlue 
+                  : isAvailable
+                      ? AppColors.primaryBlue.withOpacity(0.3)
+                      : Colors.grey[300]!,
+              width: isSelected ? 2 : 1,
+            ),
           ),
-        ),
-        child: Column(
-          children: [
-            Text(
+          child: Center(
+            child: Text(
               _formatTimeTo12Hour(slot['start_time'] ?? ''),
               style: TextStyle(
-                fontSize: 14,
+                fontSize: 11,
                 fontWeight: FontWeight.w600,
                 color: isSelected 
                     ? Colors.white 
                     : isAvailable 
-                        ? Colors.black87 
-                        : Colors.grey,
+                        ? AppColors.primaryBlue 
+                        : Colors.grey[500],
               ),
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
-            if (doctor != null) ...[
-              const SizedBox(height: 4),
-              Text(
-                doctor['name'] ?? '',
-                style: TextStyle(
-                  fontSize: 10,
-                  color: isSelected 
-                      ? Colors.white.withOpacity(0.8) 
-                      : Colors.grey,
-                ),
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ],
+          ),
         ),
       ),
     );
@@ -2348,34 +3039,51 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: 20),
+            // Tests Section (only show if there are tests)
+            if (selectedTests.isNotEmpty) ...[
+              const SizedBox(height: 20),
 
-            // Tests Section
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Selected Tests',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
+              // Tests Section
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Selected Tests',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
                   ),
-                ),
-                TextButton.icon(
-                  onPressed: () => _addMoreTests(),
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('Add More'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: AppColors.primaryBlue,
+                  GestureDetector(
+                    onTap: () => _addMoreTests(),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryBlue.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: AppColors.primaryBlue.withOpacity(0.3),
+                          width: 1,
+                        ),
+                      ),
+                      child: Text(
+                        'Add More Tests',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.primaryBlue,
+                        ),
+                      ),
+                    ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
+                ],
+              ),
+              const SizedBox(height: 12),
 
-            // Tests List
-            ...selectedTests.map((testName) {
+              // Tests List
+              ...selectedTests.map((testId) {
+              final testName = testIdToName[testId] ?? testId; // Use mapped name or fallback to ID
               return Container(
                 margin: const EdgeInsets.only(bottom: 12),
                 padding: const EdgeInsets.all(16),
@@ -2401,29 +3109,34 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                           const SizedBox(height: 4),
                           Row(
                             children: [
-                              if (widget.labOriginalPrice > widget.labDiscountedPrice)
+                              // Show strikethrough original price only when discount should be applied and discount is available
+                              if (shouldApplyDiscount && _getTestDiscountedPrice(testName) < _getTestPrice(testName)) ...[
                                 Text(
-                                  '₹${widget.labOriginalPrice.toStringAsFixed(0)}',
+                                  '₹${_getTestPrice(testName).toStringAsFixed(0)}',
                                   style: const TextStyle(
                                     fontSize: 12,
                                     color: Colors.grey,
                                     decoration: TextDecoration.lineThrough,
                                   ),
                                 ),
-                              if (widget.labOriginalPrice > widget.labDiscountedPrice)
                                 const SizedBox(width: 8),
+                              ],
+                              // Show appropriate price based on whether discount should be applied
                               Text(
-                                '₹${widget.labDiscountedPrice.toStringAsFixed(0)}',
+                                shouldApplyDiscount 
+                                  ? '₹${_getTestDiscountedPrice(testName).toStringAsFixed(0)}'
+                                  : '₹${_getTestPrice(testName).toStringAsFixed(0)}',
                                 style: const TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.bold,
                                   color: AppColors.primaryBlue,
                                 ),
                               ),
-                              if (widget.labDiscount.isNotEmpty) ...[
+                              // Show discount badge only when discount should be applied
+                              if (shouldApplyDiscount && widget.testDiscounts[testName]?.isNotEmpty == true) ...[
                                 const SizedBox(width: 8),
                                 Text(
-                                  widget.labDiscount,
+                                  widget.testDiscounts[testName]!,
                                   style: const TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.w600,
@@ -2438,17 +3151,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     ),
                     IconButton(
                       onPressed: () async {
-                        setState(() {
-                          selectedTests.remove(testName);
-                        });
-                        
-                        // Remove from cart
-                        await _removeFromCart(testName);
-                        
-                        // Call the callback function if provided
-                        if (widget.onRemoveFromCart != null) {
-                          widget.onRemoveFromCart!(testName);
-                        }
+                        // Remove from cart (this handles state update and callback internally)
+                        await _removeFromCart(testId);
                       },
                       icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
                     ),
@@ -2456,58 +3160,130 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 ),
               );
             }),
+            ],
 
-            const SizedBox(height: 20),
-
-            // Clear Cart Button
-            if (selectedTests.isNotEmpty)
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () async {
-                    // Store the items before clearing
-                    final itemsToRemove = selectedTests.toList();
-                    
-                    setState(() {
-                      selectedTests.clear();
-                    });
-                    
-                    final result = await _clearCart();
-                    if (result) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Cart cleared successfully'),
-                          backgroundColor: Colors.green,
-                        ),
-                      );
-                      
-                      // Call the callback function for each removed item
-                      if (widget.onRemoveFromCart != null) {
-                        for (final testName in itemsToRemove) {
-                          widget.onRemoveFromCart!(testName);
-                        }
-                      }
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Failed to clear cart'),
-                          backgroundColor: Colors.red,
-                        ),
-                      );
-                    }
-                  },
-                  icon: const Icon(Icons.clear_all, size: 18),
-                  label: const Text('Clear All Items'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.red,
-                    side: const BorderSide(color: Colors.red),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
+            // Packages Section (only show if there are packages)
+            if (selectedPackages.isNotEmpty) ...[
+              const SizedBox(height: 20),
+              
+              // Packages Section
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Selected Packages',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
                     ),
                   ),
-                ),
+                  GestureDetector(
+                    onTap: () => _addMorePackages(),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryBlue.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: AppColors.primaryBlue.withOpacity(0.3),
+                          width: 1,
+                        ),
+                      ),
+                      child: Text(
+                        'Add More Packages',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.primaryBlue,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
+              const SizedBox(height: 12),
+
+              // Packages List
+              ...selectedPackages.map((packageId) {
+                final packageName = packageIdToName[packageId] ?? packageId; // Use mapped name or fallback to ID
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey[200]!),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              packageName,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.black87,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                // Show strikethrough original price only when discount should be applied and discount is available
+                                if (shouldApplyDiscount && _getPackageDiscountedPrice(packageName) < _getPackagePrice(packageName)) ...[
+                                  Text(
+                                    '₹${_getPackagePrice(packageName).toStringAsFixed(0)}',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey,
+                                      decoration: TextDecoration.lineThrough,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                ],
+                                // Show appropriate price based on whether discount should be applied
+                                Text(
+                                  shouldApplyDiscount 
+                                    ? '₹${_getPackageDiscountedPrice(packageName).toStringAsFixed(0)}'
+                                    : '₹${_getPackagePrice(packageName).toStringAsFixed(0)}',
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.primaryBlue,
+                                  ),
+                                ),
+                                // Show discount badge only when discount should be applied
+                                if (shouldApplyDiscount && widget.testDiscounts[packageName]?.isNotEmpty == true) ...[
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    widget.testDiscounts[packageName]!,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.green,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () async {
+                          // Remove from cart (this handles state update and callback internally)
+                          await _removeFromCart(packageId);
+                        },
+                        icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+            ],
 
             const SizedBox(height: 20),
 
@@ -2863,20 +3639,33 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                 ),
                               ),
                               const SizedBox(height: 2),
-                              Text(
-                                '₹${walletBalance.toStringAsFixed(0)}',
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.primaryBlue,
-                                ),
-                              ),
+                              isLoadingWallet
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryBlue),
+                                      ),
+                                    )
+                                  : Text(
+                                      walletBalance > 0 
+                                          ? '₹${walletBalance.toStringAsFixed(0)}'
+                                          : 'No balance',
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                        color: walletBalance > 0 
+                                            ? AppColors.primaryBlue
+                                            : Colors.grey[600],
+                                      ),
+                                    ),
                             ],
                           ),
                         ),
                         Switch(
                           value: useWalletBalance,
-                          onChanged: (value) {
+                          onChanged: (walletBalance > 0 && !isLoadingWallet) ? (value) {
                             setState(() {
                               useWalletBalance = value;
                               if (value) {
@@ -2887,7 +3676,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                             });
                             // Update coupon discount for new payment method
                             _updateCouponForPaymentMethod();
-                          },
+                          } : null,
                           activeColor: AppColors.primaryBlue,
                         ),
                       ],
@@ -2898,7 +3687,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   
                   // Payment Options
                   InkWell(
-                    onTap: () {
+                    onTap: shouldDisablePaymentMethods ? null : () {
                       setState(() {
                         selectedPaymentMethod = 'Online Payment';
                         useWalletBalance = false;
@@ -2909,17 +3698,23 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     child: Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: selectedPaymentMethod == 'Online Payment' ? AppColors.primaryBlue.withOpacity(0.1) : Colors.grey[50],
+                        color: shouldDisablePaymentMethods 
+                            ? Colors.grey[200]
+                            : selectedPaymentMethod == 'Online Payment' ? AppColors.primaryBlue.withOpacity(0.1) : Colors.grey[50],
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: selectedPaymentMethod == 'Online Payment' ? AppColors.primaryBlue : Colors.grey[300]!,
+                          color: shouldDisablePaymentMethods 
+                              ? Colors.grey[400]!
+                              : selectedPaymentMethod == 'Online Payment' ? AppColors.primaryBlue : Colors.grey[300]!,
                         ),
                       ),
                       child: Row(
                         children: [
                           Icon(
                             Icons.payment,
-                            color: selectedPaymentMethod == 'Online Payment' ? AppColors.primaryBlue : Colors.grey[600],
+                            color: shouldDisablePaymentMethods 
+                                ? Colors.grey[500]
+                                : selectedPaymentMethod == 'Online Payment' ? AppColors.primaryBlue : Colors.grey[600],
                           ),
                           const SizedBox(width: 12),
                           Expanded(
@@ -2928,10 +3723,28 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                               style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w600,
-                                color: selectedPaymentMethod == 'Online Payment' ? AppColors.primaryBlue : Colors.black87,
+                                color: shouldDisablePaymentMethods 
+                                    ? Colors.grey[500]
+                                    : selectedPaymentMethod == 'Online Payment' ? AppColors.primaryBlue : Colors.black87,
                               ),
                             ),
                           ),
+                          if (shouldDisablePaymentMethods)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.grey[300],
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                'Paid via Wallet',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.grey[700],
+                                ),
+                              ),
+                            ),
                           if (selectedPaymentMethod == 'Online Payment')
                             const Icon(Icons.check_circle, color: AppColors.primaryBlue),
                         ],
@@ -2940,7 +3753,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   ),
                   const SizedBox(height: 12),
                   InkWell(
-                    onTap: () {
+                    onTap: shouldDisablePaymentMethods ? null : () {
                       setState(() {
                         selectedPaymentMethod = 'Pay at Collection';
                         useWalletBalance = false;
@@ -2951,17 +3764,23 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     child: Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: selectedPaymentMethod == 'Pay at Collection' ? AppColors.primaryBlue.withOpacity(0.1) : Colors.grey[50],
+                        color: shouldDisablePaymentMethods 
+                            ? Colors.grey[200]
+                            : selectedPaymentMethod == 'Pay at Collection' ? AppColors.primaryBlue.withOpacity(0.1) : Colors.grey[50],
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: selectedPaymentMethod == 'Pay at Collection' ? AppColors.primaryBlue : Colors.grey[300]!,
+                          color: shouldDisablePaymentMethods 
+                              ? Colors.grey[400]!
+                              : selectedPaymentMethod == 'Pay at Collection' ? AppColors.primaryBlue : Colors.grey[300]!,
                         ),
                       ),
                       child: Row(
                         children: [
                           Icon(
                             Icons.money,
-                            color: selectedPaymentMethod == 'Pay at Collection' ? AppColors.primaryBlue : Colors.grey[600],
+                            color: shouldDisablePaymentMethods 
+                                ? Colors.grey[500]
+                                : selectedPaymentMethod == 'Pay at Collection' ? AppColors.primaryBlue : Colors.grey[600],
                           ),
                           const SizedBox(width: 12),
                           Expanded(
@@ -2970,11 +3789,29 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                               style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w600,
-                                color: selectedPaymentMethod == 'Pay at Collection' ? AppColors.primaryBlue : Colors.black87,
+                                color: shouldDisablePaymentMethods 
+                                    ? Colors.grey[500]
+                                    : selectedPaymentMethod == 'Pay at Collection' ? AppColors.primaryBlue : Colors.black87,
                               ),
                             ),
                           ),
-                          if (selectedPaymentMethod == 'Pay at Collection')
+                          if (shouldDisablePaymentMethods)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.grey[300],
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                'Paid via Wallet',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.grey[700],
+                                ),
+                              ),
+                            ),
+                          if (selectedPaymentMethod == 'Pay at Collection' && !shouldDisablePaymentMethods)
                             const Icon(Icons.check_circle, color: AppColors.primaryBlue),
                         ],
                       ),
@@ -3207,6 +4044,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
+                          // Show strikethrough original price only when discount should be applied and discount is available
                           if (shouldApplyDiscount && totalOriginalPrice > totalDiscountedPrice)
                             Text(
                               '₹${totalOriginalPrice.toStringAsFixed(0)}',
@@ -3216,6 +4054,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                 decoration: TextDecoration.lineThrough,
                               ),
                             ),
+                          // Show actual payable amount (which already considers shouldApplyDiscount)
                           Text(
                             '₹${actualPayableAmount.toStringAsFixed(0)}',
                             style: const TextStyle(
@@ -3228,6 +4067,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       ),
                     ],
                   ),
+                  // Show discount message only when discount should be applied and discount is available
                   if (shouldApplyDiscount && totalOriginalPrice > totalDiscountedPrice) ...[
                     const SizedBox(height: 8),
                     Container(
@@ -3248,42 +4088,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              'Discount applied (${selectedPaymentMethod == 'Online Payment' ? 'Online Payment' : 'Full Wallet Payment'})',
+                              'Discount applied - Best prices guaranteed!',
                               style: const TextStyle(
                                 fontSize: 12,
                                 color: Colors.green,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                  if (!shouldApplyDiscount && totalOriginalPrice > totalDiscountedPrice) ...[
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.orange.withOpacity(0.3)),
-                      ),
-                      child: const Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(
-                            Icons.info_outline,
-                            size: 16,
-                            color: Colors.orange,
-                          ),
-                          SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'Pay online or use full wallet balance to get discount',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.orange,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -3355,14 +4163,27 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                             ),
                           ),
                         ),
-                        Text(
-                          '₹${walletBalance.toStringAsFixed(0)}',
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.primaryBlue,
-                          ),
-                        ),
+                        isLoadingWallet
+                            ? const SizedBox(
+                                width: 12,
+                                height: 12,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 1.5,
+                                  valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryBlue),
+                                ),
+                              )
+                            : Text(
+                                walletBalance > 0 
+                                    ? '₹${walletBalance.toStringAsFixed(0)}'
+                                    : 'No balance',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: walletBalance > 0 
+                                      ? AppColors.primaryBlue
+                                      : Colors.grey[600],
+                                ),
+                              ),
                       ],
                     ),
                     const SizedBox(height: 4),
@@ -3615,6 +4436,808 @@ class _AnimatedSuccessDialogState extends State<_AnimatedSuccessDialog>
           );
         },
       ),
+    );
+  }
+}
+
+// Add More Items Bottom Sheet Widget
+class _AddMoreItemsBottomSheet extends StatefulWidget {
+  final String labId;
+  final String labName;
+  final Set<String> cartItems;
+  final VoidCallback onItemAdded;
+
+  const _AddMoreItemsBottomSheet({
+    required this.labId,
+    required this.labName,
+    required this.cartItems,
+    required this.onItemAdded,
+  });
+
+  @override
+  State<_AddMoreItemsBottomSheet> createState() => _AddMoreItemsBottomSheetState();
+}
+
+class _AddMoreItemsBottomSheetState extends State<_AddMoreItemsBottomSheet> {
+  final ApiService _apiService = ApiService();
+
+  List<Map<String, dynamic>> _tests = [];
+  List<Map<String, dynamic>> _packages = [];
+  bool _isLoadingTests = false;
+  bool _isLoadingPackages = false;
+  bool _showTests = true; // true for tests, false for packages
+  Set<String> _loadingItems = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTests();
+    _loadPackages();
+  }
+
+  Future<void> _loadTests() async {
+    setState(() {
+      _isLoadingTests = true;
+    });
+
+    try {
+      // Get organization-specific tests using the API endpoint
+      final result = await _apiService.getOrganizationTests(
+        organizationId: widget.labId,
+        search: '',
+        sortBy: 'testname',
+        sortOrder: 'asc',
+      );
+
+      if (result['success'] && mounted) {
+        final responseData = result['data'];
+        final organizationTests = List<Map<String, dynamic>>.from(responseData['data'] ?? []);
+        
+        // Transform the organization-specific test data to match the expected format
+        final transformedTests = organizationTests.map((orgTest) {
+          final test = orgTest['test'] as Map<String, dynamic>? ?? {};
+          return {
+            'id': test['id'] ?? orgTest['test_id'],
+            'testname': test['name'] ?? '',
+            'shortname': test['short_name'] ?? '',
+            'name': test['name'] ?? '',
+            'description': test['description'] ?? '',
+            'baseprice': orgTest['baseprice'] ?? '0',
+            'discountedprice': orgTest['discountedprice'] ?? orgTest['baseprice'] ?? '0',
+            'discountvalue': orgTest['discountvalue'] ?? '0',
+            'discounttype': orgTest['discounttype'] ?? 'percentage',
+            'category': test['category']?['name'] ?? '',
+            'is_home_collection': test['is_home_collection'] ?? false,
+            'service_id': orgTest['service_id'],
+            'test_id': orgTest['test_id'],
+          };
+        }).toList();
+        
+        setState(() {
+          _tests = transformedTests;
+          _isLoadingTests = false;
+        });
+        
+        print('✅ Loaded ${transformedTests.length} organization-specific tests for ${widget.labName}');
+      } else {
+        setState(() {
+          _isLoadingTests = false;
+        });
+        print('❌ Failed to load organization tests: ${result['message']}');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingTests = false;
+        });
+      }
+      print('❌ Error loading organization tests: $e');
+    }
+  }
+
+  Future<void> _loadPackages() async {
+    setState(() {
+      _isLoadingPackages = true;
+    });
+
+    try {
+      // Get organization-specific packages using the API endpoint
+      final result = await _apiService.getOrganizationPackages(
+        organizationId: widget.labId,
+      );
+
+      if (result['success'] && mounted) {
+        final organizationPackages = List<Map<String, dynamic>>.from(result['data'] ?? []);
+        
+        // Transform the organization-specific package data to match the expected format
+        final transformedPackages = organizationPackages.map((orgPackage) {
+          final package = orgPackage['package'] as Map<String, dynamic>? ?? {};
+          return {
+            'id': orgPackage['id'],
+            'packagename': package['packagename'] ?? '',
+            'name': package['packagename'] ?? '',
+            'description': package['description'] ?? '',
+            'baseprice': orgPackage['baseprice'] ?? '0',
+            'discountvalue': orgPackage['discountvalue'] ?? '0',
+            'discounttype': orgPackage['discounttype'] ?? 'percentage',
+            'discountedprice': orgPackage['discountedprice'] ?? orgPackage['baseprice'] ?? '0',
+            'package_id': orgPackage['package_id'],
+            'org_id': orgPackage['org_id'],
+            'status': orgPackage['status'],
+            'tests': [], // Empty tests array for now, can be populated if needed
+          };
+        }).toList();
+        
+        setState(() {
+          _packages = transformedPackages;
+          _isLoadingPackages = false;
+        });
+        
+        print('✅ Loaded ${transformedPackages.length} organization-specific packages for ${widget.labName}');
+      } else {
+        setState(() {
+          _isLoadingPackages = false;
+        });
+        print('❌ Failed to load organization packages: ${result['message']}');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingPackages = false;
+        });
+      }
+      print('❌ Error loading organization packages: $e');
+    }
+  }
+
+  Future<void> _addToCart(Map<String, dynamic> item, bool isPackage) async {
+    final itemName = isPackage 
+        ? (item['packagename'] ?? item['name'] ?? 'Package')
+        : (item['testname'] ?? item['shortname'] ?? item['name'] ?? 'Test');
+    
+    if (widget.cartItems.contains(itemName)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$itemName is already in cart'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+    
+    setState(() {
+      _loadingItems.add(itemName);
+    });
+
+    try {
+      final price = double.tryParse(item['baseprice']?.toString() ?? '0') ?? 0.0;
+      
+      // For organization-specific tests, use test_id for lab_test_id key
+      final labTestId = isPackage ? '' : (item['test_id']?.toString() ?? item['id']?.toString() ?? '');
+      final packageId = isPackage ? (item['package_id']?.toString() ?? '') : null;
+
+      final result = await _apiService.addToCart(
+        price: price,
+        testName: itemName,
+        labTestId: labTestId,
+        packageId: packageId,
+        organizationId: widget.labId,
+        organizationName: widget.labName,
+      );
+
+      if (result['success']) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$itemName added to cart'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+        
+        // Update local state to add the item to cart
+        final itemId = isPackage 
+            ? (item['package_id']?.toString() ?? item['id']?.toString() ?? '')
+            : (item['test_id']?.toString() ?? item['id']?.toString() ?? '');
+        setState(() {
+          widget.cartItems.add(itemId);
+        });
+        
+        widget.onItemAdded();
+        Navigator.of(context).pop();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['message'] ?? 'Failed to add item'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error adding item: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+
+    setState(() {
+      _loadingItems.remove(itemName);
+    });
+  }
+
+  Future<void> _removeFromCart(Map<String, dynamic> item, bool isPackage) async {
+    final itemName = isPackage 
+        ? (item['packagename'] ?? item['name'] ?? 'Package')
+        : (item['testname'] ?? item['shortname'] ?? item['name'] ?? 'Test');
+    
+    setState(() {
+      _loadingItems.add(itemName);
+    });
+
+    try {
+      // Get the item ID (test_id or package_id)
+      final itemId = isPackage 
+          ? (item['package_id']?.toString() ?? item['id']?.toString() ?? '')
+          : (item['test_id']?.toString() ?? item['id']?.toString() ?? '');
+      
+      // Find the cart item ID from the cart data
+      String? cartItemId;
+      
+      if (widget.cartItems.isNotEmpty) {
+        // We need to access the cart data from the parent widget
+        // For now, we'll use the item ID directly and let the API handle it
+        // This is a simplified approach - in a real scenario, we'd need to pass cart data
+        cartItemId = itemId;
+      }
+
+      final result = await _apiService.removeFromCart(cartItemId ?? itemId);
+
+      if (result['success']) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$itemName removed from cart'),
+            backgroundColor: Colors.orange,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+        
+        // Update local state to remove the item from cart
+        setState(() {
+          widget.cartItems.remove(itemId);
+        });
+        
+        widget.onItemAdded(); // This will refresh the cart data
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['message'] ?? 'Failed to remove item'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error removing item: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+
+    setState(() {
+      _loadingItems.remove(itemName);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.85,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(20),
+          topRight: Radius.circular(20),
+        ),
+      ),
+      child: Column(
+        children: [
+          // Handle bar
+          Container(
+            margin: const EdgeInsets.only(top: 12),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          
+          // Header
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Add More Items',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'to ${widget.labName}',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.close, size: 20),
+                ),
+              ],
+            ),
+          ),
+          
+          // Tab switcher
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() => _showTests = true),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          color: _showTests ? AppColors.primaryBlue : Colors.transparent,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          'Tests',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: _showTests ? Colors.white : Colors.grey[600],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() => _showTests = false),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          color: !_showTests ? AppColors.primaryBlue : Colors.transparent,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          'Packages',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: !_showTests ? Colors.white : Colors.grey[600],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          
+          // Content
+          Expanded(
+            child: _showTests ? _buildTestsList() : _buildPackagesList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTestsList() {
+    if (_isLoadingTests) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_tests.isEmpty) {
+      return const Center(
+        child: Text(
+          'No tests available',
+          style: TextStyle(color: Colors.grey),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      itemCount: _tests.length,
+      itemBuilder: (context, index) {
+        final test = _tests[index];
+        final testName = test['testname'] ?? test['shortname'] ?? test['name'] ?? 'Test';
+        final testId = test['test_id']?.toString() ?? test['id']?.toString() ?? '';
+        final basePrice = double.tryParse(test['baseprice']?.toString() ?? '0') ?? 0.0;
+        final discountedPrice = double.tryParse(test['discountedprice']?.toString() ?? '0') ?? 0.0;
+        final isInCart = widget.cartItems.contains(testId);
+        final isLoading = _loadingItems.contains(testName);
+
+        return Card(
+          margin: const EdgeInsets.only(bottom: 16),
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: Colors.grey[200]!, width: 1),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  testName,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                    color: Colors.black87,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Also known as:',
+                  style: TextStyle(
+                    color: Colors.grey,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  test['shortname'] ?? test['description'] ?? 'Test',
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    if (test['is_home_collection'] == true || test['ishomecollection'] == true)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                        ),
+                        child: const Text(
+                          'Home Collection',
+                          style: TextStyle(
+                            color: Colors.blue,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (discountedPrice < basePrice) ...[
+                          Text(
+                            '₹${basePrice.toStringAsFixed(0)}',
+                            style: const TextStyle(
+                              color: Colors.grey,
+                              fontSize: 14,
+                              decoration: TextDecoration.lineThrough,
+                            ),
+                          ),
+                        ],
+                        Text(
+                          '₹${discountedPrice.toStringAsFixed(0)}',
+                          style: const TextStyle(
+                            color: AppColors.primaryBlue,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                    isInCart
+                        ? ElevatedButton(
+                            onPressed: isLoading ? null : () => _removeFromCart(test, false),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFE74C3C),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            ),
+                            child: isLoading
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                    ),
+                                  )
+                                : const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.remove,
+                                        color: Colors.white,
+                                        size: 18,
+                                      ),
+                                      SizedBox(width: 6),
+                                      Text(
+                                        'Remove',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                          )
+                        : OutlinedButton(
+                            onPressed: isLoading ? null : () => _addToCart(test, false),
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: Color(0xFF2ECC71)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            ),
+                            child: isLoading
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF2ECC71)),
+                                    ),
+                                  )
+                                : const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.add,
+                                        color: Color(0xFF2ECC71),
+                                        size: 18,
+                                      ),
+                                      SizedBox(width: 6),
+                                      Text(
+                                        'Add',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                          color: Color(0xFF2ECC71),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                          ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildPackagesList() {
+    if (_isLoadingPackages) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_packages.isEmpty) {
+      return const Center(
+        child: Text(
+          'No packages available',
+          style: TextStyle(color: Colors.grey),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      itemCount: _packages.length,
+      itemBuilder: (context, index) {
+        final package = _packages[index];
+        final packageName = package['packagename'] ?? package['name'] ?? 'Package';
+        final packageId = package['package_id']?.toString() ?? package['id']?.toString() ?? '';
+        final price = double.tryParse(package['baseprice']?.toString() ?? '0') ?? 0.0;
+        final discountedPrice = double.tryParse(package['discountedprice']?.toString() ?? '0') ?? 0.0;
+        final isInCart = widget.cartItems.contains(packageId);
+        final isLoading = _loadingItems.contains(packageName);
+
+        return Card(
+          margin: const EdgeInsets.only(bottom: 12),
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: Colors.grey[200]!, width: 1),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header: Package name and price
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            packageName,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                              color: Colors.black87,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            package['description'] ?? '',
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 12,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        if (discountedPrice < price) ...[
+                          Text(
+                            '₹${price.toStringAsFixed(0)}',
+                            style: const TextStyle(
+                              color: Colors.grey,
+                              fontSize: 12,
+                              decoration: TextDecoration.lineThrough,
+                            ),
+                          ),
+                        ],
+                        Text(
+                          '₹${discountedPrice.toStringAsFixed(0)}',
+                          style: const TextStyle(
+                            color: AppColors.primaryBlue,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    isInCart
+                        ? ElevatedButton(
+                            onPressed: isLoading ? null : () => _removeFromCart(package, true),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFE74C3C),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            ),
+                            child: isLoading
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                    ),
+                                  )
+                                : const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.remove,
+                                        color: Colors.white,
+                                        size: 18,
+                                      ),
+                                      SizedBox(width: 6),
+                                      Text(
+                                        'Remove',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                          )
+                        : OutlinedButton(
+                            onPressed: isLoading ? null : () => _addToCart(package, true),
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: Color(0xFF2ECC71)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            ),
+                            child: isLoading
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF2ECC71)),
+                                    ),
+                                  )
+                                : const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.add,
+                                        color: Color(0xFF2ECC71),
+                                        size: 18,
+                                      ),
+                                      SizedBox(width: 6),
+                                      Text(
+                                        'Add',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                          color: Color(0xFF2ECC71),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                          ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

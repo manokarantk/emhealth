@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'dart:async';
 import '../constants/colors.dart';
 import '../widgets/package_card.dart';
 import '../widgets/tests_list_tab.dart';
@@ -14,7 +15,9 @@ import '../services/intro_service.dart';
 import '../services/token_service.dart';
 import '../services/api_service.dart';
 import '../services/storage_service.dart';
+import '../services/location_service.dart';
 import '../utils/auth_utils.dart';
+import 'package:geolocator/geolocator.dart';
 import '../widgets/add_money_bottom_sheet.dart';
 
 class LandingPage extends StatefulWidget {
@@ -58,6 +61,251 @@ class _LandingPageState extends State<LandingPage> {
   void initState() {
     super.initState();
     _loadCartItems();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    
+    // Handle route arguments for tab navigation
+    final arguments = ModalRoute.of(context)?.settings.arguments;
+    if (arguments is Map<String, dynamic>) {
+      final tabIndex = arguments['tabIndex'] as int?;
+      if (tabIndex != null && tabIndex >= 0 && tabIndex < _pages.length) {
+        // Use post frame callback to ensure the tab is built first
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            setState(() {
+              _currentIndex = tabIndex;
+            });
+          }
+        });
+      }
+    }
+  }
+
+  void _showCallOptions(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Handle bar
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 24),
+              
+              // Header
+              const Text(
+                'Contact Support',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Get help with your health tests and packages',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[600],
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              
+              // Call option
+              InkWell(
+                onTap: () async {
+                  Navigator.pop(context);
+                  await _makePhoneCall('+91-1800-123-4567');
+                },
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF3B5BFE),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF3B5BFE).withOpacity(0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(
+                          Icons.call,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Call Support',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'Speak with our health experts',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(
+                        Icons.arrow_forward_ios,
+                        color: Colors.white,
+                        size: 16,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              
+              // WhatsApp option
+              InkWell(
+                onTap: () async {
+                  Navigator.pop(context);
+                  await _openWhatsApp();
+                },
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF25D366),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF25D366).withOpacity(0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(
+                          Icons.chat,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'WhatsApp Support',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'Chat with us on WhatsApp',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(
+                        Icons.arrow_forward_ios,
+                        color: Colors.white,
+                        size: 16,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _makePhoneCall(String phoneNumber) async {
+    final Uri phoneUri = Uri(scheme: 'tel', path: phoneNumber);
+    if (await canLaunchUrl(phoneUri)) {
+      await launchUrl(phoneUri);
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not launch phone dialer'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _openWhatsApp() async {
+    const String phoneNumber = '+91-1800-123-4567';
+    const String message = 'Hello! I need help with my health tests and packages.';
+    final Uri whatsappUri = Uri.parse(
+      'https://wa.me/$phoneNumber?text=${Uri.encodeComponent(message)}'
+    );
+    
+    if (await canLaunchUrl(whatsappUri)) {
+      await launchUrl(whatsappUri);
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not launch WhatsApp'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _loadCartItems() async {
@@ -194,8 +442,21 @@ class _LandingPageState extends State<LandingPage> {
         print('Updated cart data: $cartData');
         print('Updated cart items: $items');
         
+        // Extract package/test IDs from cart items to sync local state
+        final Set<String> serverCartItems = items.map((item) {
+          // Use lab_package_id for packages, lab_test_id for tests, or fallback to item id
+          final packageId = item['lab_package_id']?.toString();
+          final testId = item['lab_test_id']?.toString();
+          final itemId = item['id']?.toString();
+          
+          return packageId?.isNotEmpty == true ? packageId! :
+                 testId?.isNotEmpty == true ? testId! :
+                 itemId ?? item['test_name'] as String;
+        }).toSet();
+        
         setState(() {
           this.cartData = cartData;
+          cartItems = serverCartItems;
         });
         
         print('✅ Cart data refreshed successfully');
@@ -212,17 +473,17 @@ class _LandingPageState extends State<LandingPage> {
     HomeTab(
       cartItems: cartItems,
       cartData: cartData,
-      onAddToCart: (testName) async {
+      onAddToCart: (itemId) async {
         setState(() {
-          cartItems.add(testName);
+          cartItems.add(itemId);
         });
         await _saveCartItems();
         // Refresh cart data from API after adding item
         await _refreshCartData();
       },
-      onRemoveFromCart: (testName) async {
+      onRemoveFromCart: (itemId) async {
         setState(() {
-          cartItems.remove(testName);
+          cartItems.remove(itemId);
         });
         await _saveCartItems();
         // Refresh cart data from API after removing item
@@ -230,21 +491,23 @@ class _LandingPageState extends State<LandingPage> {
       },
       testPrices: testPrices,
       testDiscounts: testDiscounts,
+      onCartChanged: _refreshCartData, // Pass cart refresh callback
     ),
     TestsTab(
+      key: _testsTabKey,
       cartItems: cartItems,
       cartData: cartData,
-      onAddToCart: (testName) async {
+      onAddToCart: (itemId) async {
         setState(() {
-          cartItems.add(testName);
+          cartItems.add(itemId);
         });
         await _saveCartItems();
         // Refresh cart data from API after adding item
         await _refreshCartData();
       },
-      onRemoveFromCart: (testName) async {
+      onRemoveFromCart: (itemId) async {
         setState(() {
-          cartItems.remove(testName);
+          cartItems.remove(itemId);
         });
         await _saveCartItems();
         // Refresh cart data from API after removing item
@@ -252,11 +515,26 @@ class _LandingPageState extends State<LandingPage> {
       },
       testPrices: testPrices,
       testDiscounts: testDiscounts,
+      onCartChanged: _refreshCartData, // Pass cart refresh callback
     ),
-    const CallTab(),
     const MyOrdersTab(),
     const ProfileTab(),
   ];
+
+  // Global key for TestsTab to access its state
+  final GlobalKey<_TestsTabState> _testsTabKey = GlobalKey<_TestsTabState>();
+  
+  // Method to navigate to Tests tab with category and optional tab index
+  void _navigateToTestsTab(String category, {int? tabIndex}) {
+    setState(() {
+      _currentIndex = 1; // Navigate to Tests tab
+    });
+    
+    // Use post frame callback to set category and tab index after tab is built
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _testsTabKey.currentState?._setCategory(category, tabIndex: tabIndex);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -272,6 +550,19 @@ class _LandingPageState extends State<LandingPage> {
     
     return Scaffold(
       body: _pages[_currentIndex],
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          _showCallOptions(context);
+        },
+        backgroundColor: const Color(0xFF3B5BFE),
+        elevation: 8,
+        child: const Icon(
+          Icons.headset,
+          color: Colors.white,
+          size: 28,
+        ),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (index) {
@@ -283,6 +574,7 @@ class _LandingPageState extends State<LandingPage> {
         backgroundColor: Colors.white,
         selectedItemColor: AppColors.primaryBlue,
         unselectedItemColor: AppColors.grey,
+        elevation: 8,
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.home),
@@ -291,10 +583,6 @@ class _LandingPageState extends State<LandingPage> {
           BottomNavigationBarItem(
             icon: Icon(Icons.science),
             label: 'Tests',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.call),
-            label: 'Call',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.shopping_bag),
@@ -317,6 +605,7 @@ class HomeTab extends StatefulWidget {
   final Future<void> Function(String) onRemoveFromCart;
   final Map<String, double> testPrices;
   final Map<String, String> testDiscounts;
+  final VoidCallback onCartChanged; // Callback for cart refresh
 
   const HomeTab({
     super.key,
@@ -326,6 +615,7 @@ class HomeTab extends StatefulWidget {
     required this.onRemoveFromCart,
     required this.testPrices,
     required this.testDiscounts,
+    required this.onCartChanged, // Required callback
   });
 
   @override
@@ -335,11 +625,17 @@ class HomeTab extends StatefulWidget {
 class _HomeTabState extends State<HomeTab> {
   Map<String, dynamic>? userProfile;
   bool isLoadingProfile = true;
+  final LocationService _locationService = LocationService();
+  String selectedCity = 'Chennai'; // Default selected city
+  Set<String> cartItems = {}; // Track cart items by test name
+  bool _isLoadingCart = true;
+  Map<String, dynamic> cartData = {};
 
   @override
   void initState() {
     super.initState();
     _loadUserProfile();
+    _loadCartItems();
   }
 
   Future<void> _loadUserProfile() async {
@@ -382,18 +678,456 @@ class _HomeTabState extends State<HomeTab> {
     }
   }
 
+  Future<void> _loadCartItems() async {
+    try {
+      // Load cart from API
+      final apiService = ApiService();
+      final result = await apiService.getCart();
+      
+      if (result['success'] && mounted) {
+        final cartData = result['data'];
+        final items = List<Map<String, dynamic>>.from(cartData['items'] ?? []);
+        
+        // Extract test names from cart items
+        final Set<String> serverCartItems = items.map((item) => item['test_name'] as String).toSet();
+        
+        setState(() {
+          this.cartData = cartData;
+          cartItems = serverCartItems;
+          _isLoadingCart = false;
+        });
+      } else {
+        // Fallback to local storage if API fails
+        final savedCartItems = await StorageService.getCartItems();
+        
+        // Create a fallback cart data structure
+        final fallbackCartData = {
+          'cart_id': 'fallback_cart',
+          'total_price': '0.00',
+          'discount_value': '0.00',
+          'discounted_amount': '0.00',
+          'items': savedCartItems.map((testName) => {
+            'id': 'fallback_${testName.hashCode}',
+            'lab_test_id': 'fallback_test_id_${testName.hashCode}',
+            'lab_package_id': null,
+            'test_name': testName,
+            'price': '0.00',
+            'discount_type': null,
+            'discount_value': '0.00',
+            'discounted_amount': '0.00',
+          }).toList(),
+          'item_count': savedCartItems.length,
+        };
+        
+        setState(() {
+          cartData = fallbackCartData;
+          cartItems = savedCartItems;
+          _isLoadingCart = false;
+        });
+      }
+    } catch (e) {
+      // Fallback to local storage on error
+      try {
+        final savedCartItems = await StorageService.getCartItems();
+        
+        // Create a fallback cart data structure
+        final fallbackCartData = {
+          'cart_id': 'fallback_cart_error',
+          'total_price': '0.00',
+          'discount_value': '0.00',
+          'discounted_amount': '0.00',
+          'items': savedCartItems.map((testName) => {
+            'id': 'fallback_${testName.hashCode}',
+            'lab_test_id': 'fallback_test_id_${testName.hashCode}',
+            'lab_package_id': null,
+            'test_name': testName,
+            'price': '0.00',
+            'discount_type': null,
+            'discount_value': '0.00',
+            'discounted_amount': '0.00',
+          }).toList(),
+          'item_count': savedCartItems.length,
+        };
+        
+        setState(() {
+          cartData = fallbackCartData;
+          cartItems = savedCartItems;
+          _isLoadingCart = false;
+        });
+      } catch (e) {
+        setState(() {
+          _isLoadingCart = false;
+        });
+      }
+    }
+  }
+
+  /// Show cart summary bottom sheet
+  void _showCartSummaryBottomSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => Container(
+        height: MediaQuery.of(context).size.height * 0.7,
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(20),
+            topRight: Radius.circular(20),
+          ),
+        ),
+        child: Column(
+          children: [
+            // Handle bar
+            Container(
+              margin: const EdgeInsets.only(top: 8),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            
+            // Header
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.shopping_cart,
+                    color: AppColors.primaryBlue,
+                    size: 24,
+                  ),
+                  const SizedBox(width: 12),
+                  const Text(
+                    'Cart Summary',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black,
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
+            ),
+            
+            // Cart items list
+            Expanded(
+              child: cartItems.isEmpty
+                  ? const Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.shopping_cart_outlined,
+                            size: 64,
+                            color: Colors.grey,
+                          ),
+                          SizedBox(height: 16),
+                          Text(
+                            'Your cart is empty',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.grey,
+                            ),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            'Add some tests or packages to get started',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      itemCount: cartItems.length,
+                      itemBuilder: (context, index) {
+                        final item = cartItems.elementAt(index);
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          child: ListTile(
+                            leading: const Icon(
+                              Icons.medical_services,
+                              color: AppColors.primaryBlue,
+                            ),
+                            title: Text(
+                              item,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            subtitle: Text(
+                              'Test/Package',
+                              style: TextStyle(
+                                color: Colors.grey[600],
+                                fontSize: 12,
+                              ),
+                            ),
+                            trailing: IconButton(
+                              icon: const Icon(
+                                Icons.remove_circle_outline,
+                                color: Colors.red,
+                              ),
+                              onPressed: () {
+                                // Remove item from cart
+                                setState(() {
+                                  cartItems.remove(item);
+                                });
+                                Navigator.pop(context);
+                                _showCartSummaryBottomSheet(context);
+                              },
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+            
+            // Proceed button
+            Container(
+              padding: const EdgeInsets.all(20),
+              child: ElevatedButton(
+                onPressed: cartItems.isEmpty ? null : () {
+                  Navigator.pop(context);
+                  _proceedToCheckout(context);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: cartItems.isEmpty ? Colors.grey : AppColors.primaryBlue,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(double.infinity, 50),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: Text(
+                  cartItems.isEmpty ? 'Cart is Empty' : 'Proceed to Checkout',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Proceed to checkout (similar to bottom cart proceed button)
+  void _proceedToCheckout(BuildContext context) {
+    // Navigate to lab selection screen for checkout
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => LabSelectionScreen(
+          cartItems: cartItems,
+          testPrices: const {}, // Will be loaded in lab selection screen
+          testDiscounts: const {}, // Will be loaded in lab selection screen
+          cartData: cartData,
+          onCartChanged: () {
+            // Refresh cart when returning
+            _loadCartItems();
+          },
+        ),
+      ),
+    );
+  }
+
+  /// Extract city name from coordinates (simplified)
+  String _extractCityFromCoordinates(double latitude, double longitude) {
+    // For now, return a default city based on coordinates
+    // In a real app, you would use reverse geocoding API
+    if (latitude >= 12.9716 && latitude <= 13.0827 && 
+        longitude >= 80.2707 && longitude <= 80.2707) {
+      return 'Chennai';
+    } else if (latitude >= 11.0168 && latitude <= 11.0168 && 
+               longitude >= 76.9558 && longitude <= 76.9558) {
+      return 'Coimbatore';
+    } else if (latitude >= 9.9252 && latitude <= 9.9252 && 
+               longitude >= 78.1198 && longitude <= 78.1198) {
+      return 'Madurai';
+    } else {
+      return 'Chennai'; // Default fallback
+    }
+  }
+
+  /// Test location functionality directly
+  Future<void> _testLocationDirectly(BuildContext context) async {
+    try {
+      print('🧪 Testing location directly...');
+      
+      // Simple test to check if geolocator is working
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('🧪 Testing geolocator plugin...'),
+          backgroundColor: Colors.blue,
+        ),
+      );
+      
+      // Try to get the last known position first (this might work without permissions)
+      try {
+        Position? lastKnownPosition = await Geolocator.getLastKnownPosition();
+        if (lastKnownPosition != null) {
+          print('🧪 Last known position: ${lastKnownPosition.latitude}, ${lastKnownPosition.longitude}');
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('📍 Last known: ${lastKnownPosition.latitude.toStringAsFixed(6)}, ${lastKnownPosition.longitude.toStringAsFixed(6)}'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          return;
+        }
+      } catch (e) {
+        print('🧪 Last known position error: $e');
+      }
+      
+      // If no last known position, try to get current position
+      print('🧪 Trying to get current position...');
+      Position position = await Geolocator.getCurrentPosition();
+      print('🧪 Position obtained: ${position.latitude}, ${position.longitude}');
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('📍 Current: ${position.latitude.toStringAsFixed(6)}, ${position.longitude.toStringAsFixed(6)}'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      
+    } catch (e) {
+      print('❌ Location test error: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ Location error: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// Get current location and show it in a toast
+  Future<void> _getCurrentLocationAndShowToast(BuildContext context) async {
+    try {
+      // Show loading
+      print('📍 Starting location request...');
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              ),
+              SizedBox(width: 16),
+              Text('Getting your current location...'),
+            ],
+          ),
+          duration: Duration(seconds: 10),
+        ),
+      );
+
+      print('📍 Testing location directly...');
+      
+      // Try to get the last known position first (this might work without permissions)
+      Position? lastKnownPosition;
+      try {
+        lastKnownPosition = await Geolocator.getLastKnownPosition();
+        if (lastKnownPosition != null) {
+          print('📍 Last known position: ${lastKnownPosition.latitude}, ${lastKnownPosition.longitude}');
+          
+          // Dismiss loading toast
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          
+          // Update selected city based on coordinates
+          String cityFromCoordinates = _extractCityFromCoordinates(
+            lastKnownPosition.latitude,
+            lastKnownPosition.longitude,
+          );
+          setState(() {
+            selectedCity = cityFromCoordinates;
+          });
+          
+          // Location detected successfully (no toast needed)
+          print('📍 Current location detected: $cityFromCoordinates');
+          
+          // Dismiss the bottom sheet
+          Navigator.of(context).pop();
+          return;
+        }
+      } catch (e) {
+        print('📍 Last known position error: $e');
+      }
+      
+      // If no last known position, try to get current position
+      print('📍 Trying to get current position...');
+      Position position = await Geolocator.getCurrentPosition();
+      print('📍 Position obtained: ${position.latitude}, ${position.longitude}');
+      
+      // Update selected city based on coordinates
+      String cityFromCoordinates = _extractCityFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
+      setState(() {
+        selectedCity = cityFromCoordinates;
+      });
+      
+      // Dismiss loading toast
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
+      // Location detected successfully (no toast needed)
+      print('📍 Current location detected: $cityFromCoordinates');
+      
+      // Dismiss the bottom sheet
+      Navigator.of(context).pop();
+    } catch (e) {
+      print('❌ Location exception: $e');
+      // Dismiss loading toast and show error
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ Error getting location: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
+  }
+
   void _showLocationPicker(BuildContext context) {
     final List<Map<String, String>> cities = [
-      {'name': 'Mumbai', 'state': 'Maharashtra'},
-      {'name': 'Pune', 'state': 'Maharashtra'},
-      {'name': 'Delhi', 'state': 'Delhi'},
-      {'name': 'Bangalore', 'state': 'Karnataka'},
-      {'name': 'Hyderabad', 'state': 'Telangana'},
       {'name': 'Chennai', 'state': 'Tamil Nadu'},
-      {'name': 'Kolkata', 'state': 'West Bengal'},
-      {'name': 'Ahmedabad', 'state': 'Gujarat'},
-      {'name': 'Jaipur', 'state': 'Rajasthan'},
-      {'name': 'Lucknow', 'state': 'Uttar Pradesh'},
+      {'name': 'Coimbatore', 'state': 'Tamil Nadu'},
+      {'name': 'Madurai', 'state': 'Tamil Nadu'},
+      {'name': 'Salem', 'state': 'Tamil Nadu'},
+      {'name': 'Tiruchirappalli', 'state': 'Tamil Nadu'},
+      {'name': 'Vellore', 'state': 'Tamil Nadu'},
+      {'name': 'Erode', 'state': 'Tamil Nadu'},
+      {'name': 'Tiruppur', 'state': 'Tamil Nadu'},
+      {'name': 'Thoothukkudi', 'state': 'Tamil Nadu'},
+      {'name': 'Dindigul', 'state': 'Tamil Nadu'},
+      {'name': 'Thanjavur', 'state': 'Tamil Nadu'},
+      {'name': 'Kanchipuram', 'state': 'Tamil Nadu'},
+      {'name': 'Nagercoil', 'state': 'Tamil Nadu'},
+      {'name': 'Kumbakonam', 'state': 'Tamil Nadu'},
+      {'name': 'Cuddalore', 'state': 'Tamil Nadu'},
     ];
 
     showModalBottomSheet(
@@ -442,82 +1176,73 @@ class _HomeTabState extends State<HomeTab> {
                   ],
                 ),
               ),
-              // Search bar
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: TextField(
-                  decoration: InputDecoration(
-                    hintText: 'Search for your city...',
-                    prefixIcon: const Icon(Icons.search, color: AppColors.primaryBlue),
-                    filled: true,
-                    fillColor: Colors.grey[100],
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
-                  ),
-                ),
-              ),
               const SizedBox(height: 20),
               // Current location
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryBlue.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.primaryBlue.withOpacity(0.3)),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: AppColors.primaryBlue,
-                          borderRadius: BorderRadius.circular(8),
+                child: GestureDetector(
+                  onTap: () => _getCurrentLocationAndShowToast(context),
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryBlue.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.primaryBlue.withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: AppColors.primaryBlue,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(
+                            Icons.my_location,
+                            color: Colors.white,
+                            size: 20,
+                          ),
                         ),
-                        child: const Icon(
-                          Icons.my_location,
-                          color: Colors.white,
-                          size: 20,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      const Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Use Current Location',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Use Current Location',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
                               ),
-                            ),
-                            Text(
-                              'Detect your location automatically',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.grey,
+                              Text(
+                                'Detect your location automatically',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey,
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
+                        const Icon(
+                          Icons.arrow_forward_ios,
+                          size: 16,
+                          color: Colors.grey,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
               const SizedBox(height: 20),
-              // Popular cities
+              // Tamil Nadu cities
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 20),
                 child: Row(
                   children: [
                     Text(
-                      'Popular Cities',
+                      'Tamil Nadu Cities',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
@@ -569,14 +1294,17 @@ class _HomeTabState extends State<HomeTab> {
                         color: Colors.grey,
                       ),
                       onTap: () {
-                // TODO: Implement location change logic
-                Navigator.of(context).pop();
+                        setState(() {
+                          selectedCity = city['name']!;
+                        });
+                        Navigator.of(context).pop();
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text('Location changed to ${city['name']}, ${city['state']}'),
+                            backgroundColor: Colors.green,
                           ),
                         );
-              },
+                      },
                     );
                   },
                 ),
@@ -669,7 +1397,7 @@ class _HomeTabState extends State<HomeTab> {
                               )
                             else
                             Text(
-                                userProfile?['name'] ?? 'User',
+                                userProfile?['profile']?['full_name'] ?? 'Customer',
                                 style: const TextStyle(
                                 fontWeight: FontWeight.bold,
                                 color: AppColors.primaryBlue,
@@ -690,7 +1418,7 @@ class _HomeTabState extends State<HomeTab> {
                                   )
                                 else
                                 Text(
-                                    userProfile?['location']?['address'] ?? 'Location not set',
+                                    selectedCity,
                                     style: const TextStyle(
                                     color: AppColors.grey,
                                     fontSize: 13,
@@ -717,6 +1445,45 @@ class _HomeTabState extends State<HomeTab> {
                     ),
                   ),
                   const Spacer(),
+                  // Cart Icon with Item Count
+                  Stack(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.shopping_cart_outlined, color: AppColors.primaryBlue),
+                        onPressed: () {
+                          // Show cart summary bottom sheet
+                          _showCartSummaryBottomSheet(context);
+                        },
+                      ),
+                      if (cartItems.isNotEmpty)
+                        Positioned(
+                          right: 8,
+                          top: 8,
+                          child: Container(
+                            padding: const EdgeInsets.all(2),
+                            decoration: BoxDecoration(
+                              color: Colors.red,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            constraints: const BoxConstraints(
+                              minWidth: 16,
+                              minHeight: 16,
+                            ),
+                            child: Text(
+                              '${cartItems.length}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(width: 8),
+                  // Notification Icon
                   Stack(
                     children: [
                       IconButton(
@@ -807,14 +1574,14 @@ class _HomeTabState extends State<HomeTab> {
                           const SizedBox(height: 12),
                           _TopDiagnosticsCarousel(),
                     const SizedBox(height: 24),
-                          // Test Packages Section
+                          // Popular Health Packages Section
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16.0),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           const Text(
-                                  'Test Packages',
+                                  'Popular Health Packages',
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 20,
@@ -1189,6 +1956,7 @@ class _HomeTabState extends State<HomeTab> {
                     testPrices: widget.testPrices,
                     testDiscounts: widget.testDiscounts,
                     cartData: widget.cartData,
+                    onCartChanged: widget.onCartChanged, // Pass cart refresh callback
                   ),
                 ),
               );
@@ -1223,6 +1991,8 @@ class TestsTab extends StatefulWidget {
   final Future<void> Function(String) onRemoveFromCart;
   final Map<String, double> testPrices;
   final Map<String, String> testDiscounts;
+  final VoidCallback onCartChanged; // Callback for cart refresh
+  final String? initialCategory; // Category filter to apply initially
 
   const TestsTab({
     super.key,
@@ -1232,6 +2002,8 @@ class TestsTab extends StatefulWidget {
     required this.onRemoveFromCart,
     required this.testPrices,
     required this.testDiscounts,
+    required this.onCartChanged, // Required callback
+    this.initialCategory, // Optional initial category
   });
 
   @override
@@ -1239,11 +2011,42 @@ class TestsTab extends StatefulWidget {
 }
 
 class _TestsTabState extends State<TestsTab> with SingleTickerProviderStateMixin {
-  List<String> selectedCategories = ['Blood Tests'];
+  List<String> selectedCategories = ['Blood Tests & Consultations'];
   String selectedCollectionType = 'both';
   late TabController _tabController;
-  String _searchPlaceholder = 'Search tests & scans';
+  String _searchPlaceholder = 'Search tests & consultations';
   int _lastTabIndex = 0;
+  
+  // Search functionality
+  String _searchQuery = '';
+  Timer? _searchDebounceTimer;
+  final ApiService _apiService = ApiService();
+  List<Map<String, dynamic>> _searchResults = [];
+  bool _isSearching = false;
+  final TextEditingController _searchController = TextEditingController();
+  
+  // Category filtering
+  String? _selectedCategory;
+  
+  // Public method to set category from outside
+  void _setCategory(String category, {int? tabIndex}) {
+    if (mounted) {
+      _searchController.clear(); // Clear search text field
+      setState(() {
+        _selectedCategory = category;
+        _searchQuery = ''; // Clear search when setting category
+        _searchResults = [];
+        _isSearching = false;
+      });
+      
+      // Switch to specific tab if tabIndex is provided
+      if (tabIndex != null && tabIndex >= 0 && tabIndex < 2) {
+        _tabController.animateTo(tabIndex);
+      }
+      
+      _performCategorySearch();
+    }
+  }
 
   @override
   void initState() {
@@ -1252,7 +2055,7 @@ class _TestsTabState extends State<TestsTab> with SingleTickerProviderStateMixin
     _tabController.addListener(() {
       setState(() {
         _searchPlaceholder = _tabController.index == 0 
-            ? 'Search tests & scans' 
+            ? 'Search tests & consultations' 
             : 'Search packages';
       });
       
@@ -1266,6 +2069,16 @@ class _TestsTabState extends State<TestsTab> with SingleTickerProviderStateMixin
       }
     });
     
+    // Set initial category if provided
+    if (widget.initialCategory != null) {
+      _selectedCategory = widget.initialCategory;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _performCategorySearch();
+        }
+      });
+    }
+    
     // Ensure first tab is loaded immediately
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -1277,7 +2090,178 @@ class _TestsTabState extends State<TestsTab> with SingleTickerProviderStateMixin
   @override
   void dispose() {
     _tabController.dispose();
+    _searchController.dispose();
+    _searchDebounceTimer?.cancel();
     super.dispose();
+  }
+
+  /// Search functionality with debouncing
+  void _performSearch(String query) {
+    print('🔍 _performSearch called with query: "$query"');
+    _searchDebounceTimer?.cancel();
+    _searchDebounceTimer = Timer(const Duration(milliseconds: 500), () async {
+      if (query.trim().isEmpty) {
+        setState(() {
+          _searchResults = [];
+          _isSearching = false;
+        });
+        return;
+      }
+
+      setState(() {
+        _isSearching = true;
+      });
+
+      try {
+        print('🔍 Performing search for: "$query"');
+        print('🔍 Query trimmed: "${query.trim()}"');
+        print('🔍 Query length: ${query.trim().length}');
+        
+        // Only proceed if query is not empty
+        if (query.trim().isEmpty) {
+          print('🔍 Query is empty, skipping API call');
+          setState(() {
+            _searchResults = [];
+            _isSearching = false;
+          });
+          return;
+        }
+        
+        // Call API based on current tab
+        if (_tabController.index == 0) {
+          // Search for tests
+          print('🔍 Calling API with search parameter...');
+          print('🔍 Search query being passed: "${query.trim()}"');
+          final result = await _apiService.getDiagnosisTests(
+            search: query.trim(),
+            latitude: 12.95154427492096,
+            longitude: 80.25149535327924,
+          );
+          
+          if (result['success'] && mounted) {
+            final tests = List<Map<String, dynamic>>.from(result['data']['tests'] ?? []);
+            setState(() {
+              _searchResults = tests;
+              _isSearching = false;
+            });
+            print('✅ Search results: ${tests.length} tests found');
+            print('✅ API Response: $result');
+          } else {
+            print('❌ Search failed: ${result['message']}');
+            print('❌ API Response: $result');
+            setState(() {
+              _searchResults = [];
+              _isSearching = false;
+            });
+          }
+        } else {
+          // Search for packages
+          print('📦 Calling packages API with search parameter...');
+          print('📦 Search query being passed: "${query.trim()}"');
+          final result = await _apiService.getPackages(
+            search: query.trim(),
+            page: 1,
+            limit: 50,
+            sortBy: 'baseprice',
+            sortOrder: 'desc',
+          );
+          
+          if (result['success'] && mounted) {
+            final packages = List<Map<String, dynamic>>.from(result['data']['data'] ?? []);
+            setState(() {
+              _searchResults = packages;
+              _isSearching = false;
+            });
+            print('✅ Package search results: ${packages.length} packages found');
+            print('✅ Package API Response: $result');
+          } else {
+            print('❌ Package search failed: ${result['message']}');
+            print('❌ Package API Response: $result');
+            setState(() {
+              _searchResults = [];
+              _isSearching = false;
+            });
+          }
+        }
+      } catch (e) {
+        print('❌ Search error: $e');
+        setState(() {
+          _searchResults = [];
+          _isSearching = false;
+        });
+      }
+    });
+  }
+
+  /// Category search functionality
+  void _performCategorySearch() async {
+    if (_selectedCategory == null) return;
+    
+    setState(() {
+      _isSearching = true;
+      _searchResults = [];
+    });
+
+    try {
+      print('🏷️ Performing category search for: "$_selectedCategory"');
+      
+      // Call API based on current tab with category filter
+      if (_tabController.index == 0) {
+        // Search for tests with category
+        final result = await _apiService.getDiagnosisTests(
+          search: '', // Empty search to get all results
+          latitude: 12.95154427492096,
+          longitude: 80.25149535327924,
+          category: _selectedCategory, // Pass category to API
+        );
+        
+        if (result['success'] && mounted) {
+          final tests = List<Map<String, dynamic>>.from(result['data']['tests'] ?? []);
+          setState(() {
+            _searchResults = tests;
+            _isSearching = false;
+          });
+          print('✅ Category search results: ${tests.length} tests found for $_selectedCategory');
+        } else {
+          print('❌ Category search failed: ${result['message']}');
+          setState(() {
+            _searchResults = [];
+            _isSearching = false;
+          });
+        }
+      } else {
+        // Search for packages with category
+        final result = await _apiService.getPackages(
+          search: '', // Empty search to get all results
+          page: 1,
+          limit: 50,
+          sortBy: 'baseprice',
+          sortOrder: 'desc',
+          category: _selectedCategory, // Pass category to API
+        );
+        
+        if (result['success'] && mounted) {
+          final packages = List<Map<String, dynamic>>.from(result['data']['data'] ?? []);
+          setState(() {
+            _searchResults = packages;
+            _isSearching = false;
+          });
+          print('✅ Category package search results: ${packages.length} packages found for $_selectedCategory');
+        } else {
+          print('❌ Category package search failed: ${result['message']}');
+          setState(() {
+            _searchResults = [];
+            _isSearching = false;
+          });
+        }
+      }
+    } catch (e) {
+      print('❌ Category search error: $e');
+      setState(() {
+        _searchResults = [];
+        _isSearching = false;
+      });
+    }
   }
 
   void _showFilterBottomSheet(BuildContext context) {
@@ -1604,7 +2588,7 @@ class _TestsTabState extends State<TestsTab> with SingleTickerProviderStateMixin
 
   void _showCategorySearchDialog(BuildContext context) {
     final List<String> categories = [
-      'Blood Tests',
+      'Blood Tests & Consultations',
       'Diabetes Tests',
       'Liver Function Tests',
       'Kidney Function Tests',
@@ -1830,10 +2814,41 @@ class _TestsTabState extends State<TestsTab> with SingleTickerProviderStateMixin
                               const SizedBox(width: 8),
                               Expanded(
                                 child: TextField(
+                                  controller: _searchController,
+                                  onChanged: (value) {
+                                    print('🔍 TextField onChanged called with value: "$value"');
+                                    setState(() {
+                                      _searchQuery = value;
+                                    });
+                                    _performSearch(value);
+                                  },
                                   decoration: InputDecoration(
                                     border: InputBorder.none,
                                     hintText: _searchPlaceholder,
                                     hintStyle: TextStyle(color: Colors.grey[400], fontSize: 16),
+                                    suffixIcon: _isSearching 
+                                        ? const Padding(
+                                            padding: EdgeInsets.all(12),
+                                            child: SizedBox(
+                                              width: 16,
+                                              height: 16,
+                                              child: CircularProgressIndicator(strokeWidth: 2),
+                                            ),
+                                          )
+                                        : _searchQuery.isNotEmpty
+                                            ? IconButton(
+                                                icon: const Icon(Icons.clear, size: 20),
+                                                onPressed: () {
+                                                  _searchController.clear();
+                                                  setState(() {
+                                                    _searchQuery = '';
+                                                    _searchResults = [];
+                                                  });
+                                                  // Trigger search to reload all tests
+                                                  _performSearch('');
+                                                },
+                                              )
+                                            : null,
                                   contentPadding: const EdgeInsets.symmetric(vertical: 12),
                                   ),
                                 ),
@@ -1933,11 +2948,19 @@ class _TestsTabState extends State<TestsTab> with SingleTickerProviderStateMixin
                         print('🔄 Tests tab activated - resetting pagination');
                         // Reset pagination when tests tab is activated
                       },
+                      searchResults: _searchResults.isNotEmpty ? _searchResults : null,
+                      isSearching: _isSearching,
+                      searchQuery: _searchQuery.isNotEmpty ? _searchQuery : null,
+                      category: _selectedCategory, // Pass category filter
                     ),
                     PackagesListTab(
                       cartItems: widget.cartItems,
                       onAddToCart: (testName) async => await widget.onAddToCart(testName),
                       onRemoveFromCart: (testName) async => await widget.onRemoveFromCart(testName),
+                      searchQuery: _searchQuery.isNotEmpty ? _searchQuery : null,
+                      isSearching: _isSearching,
+                      searchResults: _searchResults.isNotEmpty ? _searchResults : null,
+                      category: _selectedCategory, // Pass category filter
                     ),
                 ],
               ),
@@ -1945,6 +2968,7 @@ class _TestsTabState extends State<TestsTab> with SingleTickerProviderStateMixin
             _buildCartSummary(),
           ],
         ),
+
       ),
     );
   }
@@ -1987,6 +3011,230 @@ class _TestsTabState extends State<TestsTab> with SingleTickerProviderStateMixin
         ),
       ),
     );
+  }
+
+  void _showCallOptions(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Handle bar
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 24),
+              
+              // Header
+              const Text(
+                'Contact Support',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Get help with your health tests and packages',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[600],
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              
+              // Call option
+              InkWell(
+                onTap: () async {
+                  Navigator.pop(context);
+                  await _makePhoneCall('+91-1800-123-4567');
+                },
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF3B5BFE),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF3B5BFE).withOpacity(0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(
+                          Icons.call,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Call Support',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'Speak with our health experts',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(
+                        Icons.arrow_forward_ios,
+                        color: Colors.white,
+                        size: 16,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              
+              // WhatsApp option
+              InkWell(
+                onTap: () async {
+                  Navigator.pop(context);
+                  await _openWhatsApp();
+                },
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF25D366),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF25D366).withOpacity(0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(
+                          Icons.chat,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'WhatsApp Support',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'Chat with us on WhatsApp',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(
+                        Icons.arrow_forward_ios,
+                        color: Colors.white,
+                        size: 16,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _makePhoneCall(String phoneNumber) async {
+    final Uri phoneUri = Uri(scheme: 'tel', path: phoneNumber);
+    if (await canLaunchUrl(phoneUri)) {
+      await launchUrl(phoneUri);
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not launch phone dialer'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _openWhatsApp() async {
+    const String phoneNumber = '+91-1800-123-4567';
+    const String message = 'Hello! I need help with my health tests and packages.';
+    final Uri whatsappUri = Uri.parse(
+      'https://wa.me/$phoneNumber?text=${Uri.encodeComponent(message)}'
+    );
+    
+    if (await canLaunchUrl(whatsappUri)) {
+      await launchUrl(whatsappUri);
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not launch WhatsApp'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Widget _buildCartSummary() {
@@ -2081,6 +3329,7 @@ class _TestsTabState extends State<TestsTab> with SingleTickerProviderStateMixin
                     testPrices: widget.testPrices,
                     testDiscounts: widget.testDiscounts,
                     cartData: widget.cartData,
+                    onCartChanged: widget.onCartChanged, // Pass cart refresh callback
                   ),
                 ),
               );
@@ -2222,10 +3471,120 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
     }
   }
 
+  String _formatDateTime(DateTime dateTime) {
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    
+    final day = dateTime.day.toString().padLeft(2, '0');
+    final month = months[dateTime.month - 1];
+    final year = dateTime.year;
+    final hour = dateTime.hour;
+    final minute = dateTime.minute.toString().padLeft(2, '0');
+    
+    // Convert to 12-hour format
+    final period = hour >= 12 ? 'PM' : 'AM';
+    final displayHour = hour == 0 ? 12 : (hour > 12 ? hour - 12 : hour);
+    
+    return '$day $month $year ${displayHour.toString().padLeft(2, '0')}:$minute $period';
+  }
+
+  String _formatTimeOnly(DateTime dateTime) {
+    final hour = dateTime.hour;
+    final minute = dateTime.minute.toString().padLeft(2, '0');
+    
+    // Convert to 12-hour format
+    final period = hour >= 12 ? 'PM' : 'AM';
+    final displayHour = hour == 0 ? 12 : (hour > 12 ? hour - 12 : hour);
+    
+    return '${displayHour.toString().padLeft(2, '0')}:$minute $period';
+  }
+
   @override
   void dispose() {
     _tabController.dispose();
     super.dispose();
+  }
+
+  // Cancel appointment method
+  Future<void> _cancelAppointment(Map<String, dynamic> order) async {
+    // Show cancellation dialog
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => _CancelAppointmentDialog(),
+    );
+    
+    if (result != null && result['confirmed'] == true) {
+      try {
+        // Show loading dialog
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => const AlertDialog(
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Cancelling appointment...'),
+              ],
+            ),
+          ),
+        );
+        
+        final apiService = ApiService();
+        final appointmentId = order['appointment_id']?.toString() ?? order['id']?.toString() ?? '';
+        
+        final cancelResult = await apiService.cancelAppointment(
+          appointmentId: appointmentId,
+          cancellationReason: result['reason'] ?? 'User requested cancellation',
+          refundToWallet: result['refundToWallet'] ?? true,
+          context: context,
+        );
+        
+        // Close loading dialog
+        if (mounted) Navigator.of(context).pop();
+        
+        if (cancelResult['success'] == true) {
+          // Show success message
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Appointment cancelled successfully'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+          
+          // Refresh the orders list
+          _loadAppointmentHistory();
+        } else {
+          // Show error message
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(cancelResult['message'] ?? 'Failed to cancel appointment'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+      } catch (e) {
+        // Close loading dialog if still open
+        if (mounted) Navigator.of(context).pop();
+        
+        // Show error message
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
   }
 
   @override
@@ -2413,13 +3772,23 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
   Widget _buildUpcomingOrderCard(BuildContext context, Map<String, dynamic> order) {
     return InkWell(
       onTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => OrderDetailScreen(
-              order: _getDetailedOrderData(order),
-            ),
-          ),
-        );
+                 final appointmentId = order['appointment_id']?.toString() ?? order['id']?.toString() ?? '';
+         if (appointmentId.isNotEmpty) {
+           Navigator.of(context).push(
+             MaterialPageRoute(
+               builder: (context) => OrderDetailScreen.withAppointmentId(
+                 appointmentId: appointmentId,
+               ),
+             ),
+           );
+         } else {
+           ScaffoldMessenger.of(context).showSnackBar(
+             const SnackBar(
+               content: Text('Unable to load appointment details'),
+               backgroundColor: Colors.red,
+             ),
+           );
+         }
       },
       child: Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -2499,7 +3868,7 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
                   'Date',
                   order['appointment_datetime'] != null
                       ? DateTime.tryParse(order['appointment_datetime'].toString()) != null
-                          ? DateTime.parse(order['appointment_datetime'].toString()).toLocal().toString().split(' ')[0]
+                          ? _formatDateTime(DateTime.parse(order['appointment_datetime'].toString()).toLocal())
                           : order['appointment_datetime'].toString()
                       : 'N/A',
                 ),
@@ -2507,7 +3876,7 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
               Expanded(
                 child: _buildDetailItem(Icons.access_time, 'Time', order['appointment_datetime'] != null
                       ? DateTime.tryParse(order['appointment_datetime'].toString()) != null
-                          ? DateTime.parse(order['appointment_datetime'].toString()).toLocal().toString().split(' ')[1].substring(0, 5)
+                          ? _formatTimeOnly(DateTime.parse(order['appointment_datetime'].toString()).toLocal())
                           : order['appointment_datetime'].toString()
                       : 'N/A'),
               ),
@@ -2550,7 +3919,7 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
               Expanded(
                 child: ElevatedButton.icon(
                   onPressed: () {
-                    // TODO: Cancel order functionality
+                    _cancelAppointment(order);
                   },
                   icon: const Icon(Icons.cancel, size: 18),
                   label: const Text('Cancel'),
@@ -2575,13 +3944,23 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
   Widget _buildPastOrderCard(BuildContext context, Map<String, dynamic> order) {
     return GestureDetector(
       onTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => OrderDetailScreen(
-              order: _getDetailedOrderData(order),
-            ),
-          ),
-        );
+                 final appointmentId = order['appointment_id']?.toString() ?? order['id']?.toString() ?? '';
+         if (appointmentId.isNotEmpty) {
+           Navigator.of(context).push(
+             MaterialPageRoute(
+               builder: (context) => OrderDetailScreen.withAppointmentId(
+                 appointmentId: appointmentId,
+               ),
+             ),
+           );
+         } else {
+           ScaffoldMessenger.of(context).showSnackBar(
+             const SnackBar(
+               content: Text('Unable to load appointment details'),
+               backgroundColor: Colors.red,
+             ),
+           );
+         }
       },
       child: Container(
         margin: const EdgeInsets.only(bottom: 16),
@@ -4024,28 +5403,42 @@ class _ProfileTabState extends State<ProfileTab> {
 class ServiceGridSection extends StatelessWidget {
   const ServiceGridSection({super.key});
 
+  void _navigateToTestsWithCategory(BuildContext context, String category, {int? tabIndex}) {
+    // Find the LandingPageState to access the tab controller
+    final landingPageState = context.findAncestorStateOfType<_LandingPageState>();
+    if (landingPageState != null) {
+      // Navigate to Tests tab (index 1) and pass the category and tab index
+      landingPageState._navigateToTestsTab(category, tabIndex: tabIndex);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final services = [
       {
-        'icon': Icons.thermostat,
+        'icon': Icons.bloodtype,
         'color': const Color(0xFFE74C3C),
-        'label': 'Blood Tests and Scans',
+        'label': 'Blood Tests & Consultations',
+        'category': 'blood_tests',
+      },
+      {
+        'icon': Icons.scanner,
+        'color': const Color(0xFF9B59B6),
+        'label': 'Doctor / Dietitian / Physio Consultation',
+        'category': 'scans',
       },
       {
         'icon': Icons.medical_services,
         'color': const Color(0xFF2980F2),
         'label': 'Master Health Checkup @ Home',
-      },
-      {
-        'icon': Icons.person,
-        'color': const Color(0xFF27AE60),
-        'label': 'Doctor, Dietitian & Physio Consultation',
+        'category': 'health_checkup',
+        'tabIndex': 1, // Navigate to Packages tab
       },
       {
         'icon': Icons.description,
         'color': const Color(0xFFF2994A),
         'label': 'View Reports',
+        'category': null,
       },
     ];
 
@@ -4065,37 +5458,54 @@ class ServiceGridSection extends StatelessWidget {
       itemCount: services.length,
       itemBuilder: (context, index) {
         final service = services[index];
-        return Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: const Color(0xFFE0E0E0)),
-          ),
-          child: Row(
-            children: [
-              const SizedBox(width: 14),
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: (service['color'] as Color).withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(8),
+        return GestureDetector(
+          onTap: service['category'] != null 
+              ? () => _navigateToTestsWithCategory(
+                  context, 
+                  service['category'] as String,
+                  tabIndex: service['tabIndex'] as int?,
+                )
+              : () {
+                  // Handle other service taps (View Reports)
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('${service['label']} coming soon!'),
+                      backgroundColor: AppColors.primaryBlue,
+                    ),
+                  );
+                },
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFFE0E0E0)),
+            ),
+            child: Row(
+              children: [
+                const SizedBox(width: 14),
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: (service['color'] as Color).withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(service['icon'] as IconData, color: service['color'] as Color, size: 22),
                 ),
-                child: Icon(service['icon'] as IconData, color: service['color'] as Color, size: 22),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Text(
-                  service['label'] as String,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w500,
-                    fontSize: 13,
-                    color: Color(0xFF222222),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Text(
+                    service['label'] as String,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w500,
+                      fontSize: 13,
+                      color: Color(0xFF222222),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 10),
-            ],
+                const SizedBox(width: 10),
+              ],
+            ),
           ),
         );
       },
@@ -4243,19 +5653,14 @@ class StatsInfoSection extends StatelessWidget {
       },
       {
         'value': null,
-        'title': 'Certified',
+        'title': 'NABL Certified',
         'subtitle': 'Labs',
         'icon': Icons.verified_user,
       },
-      {
-        'value': '24/7',
-        'title': 'Customer',
-        'subtitle': 'Support',
-        'icon': null,
-      },
+
       {
         'value': '100+',
-        'title': 'Test',
+        'title': 'Diagnostic / Scan',
         'subtitle': 'Centers',
         'icon': null,
       },
@@ -4270,7 +5675,7 @@ class StatsInfoSection extends StatelessWidget {
       itemBuilder: (context, index) {
         final stat = stats[index];
         return Container(
-            width: 160,
+            width: 200,
             margin: const EdgeInsets.only(right: 12),
           decoration: BoxDecoration(
             color: Colors.white,
@@ -4552,7 +5957,7 @@ class _TestPackagesCarouselState extends State<_TestPackagesCarousel> {
       packages = [
         {
           'packagename': 'Fever Profile - I',
-          'discountvalue': '19.01',
+          'discountvalue': '19',
           'baseprice': '1110.00',
           'tests': [
             {'test': {'testname': 'CBC'}},
@@ -4564,7 +5969,7 @@ class _TestPackagesCarouselState extends State<_TestPackagesCarousel> {
     },
     {
           'packagename': 'Diabetes Check',
-          'discountvalue': '15.00',
+          'discountvalue': '15',
           'baseprice': '900.00',
           'tests': [
             {'test': {'testname': 'Fasting Glucose'}},
@@ -4578,7 +5983,7 @@ class _TestPackagesCarouselState extends State<_TestPackagesCarousel> {
     },
     {
           'packagename': 'Full Body Checkup',
-          'discountvalue': '25.00',
+          'discountvalue': '25',
           'baseprice': '2500.00',
           'tests': [
             {'test': {'testname': 'CBC'}},
@@ -4628,6 +6033,34 @@ class _TestPackagesCarouselState extends State<_TestPackagesCarousel> {
     }
   }
 
+  // Helper method to format discount value (remove floating points)
+  String _formatDiscount(String discountValue) {
+    if (discountValue == null || discountValue.isEmpty) return '0';
+    String formatted = discountValue;
+    if (formatted.contains('.')) {
+      // Remove .00, .0, or any decimal part if it's a whole number
+      double? number = double.tryParse(formatted);
+      if (number != null && number == number.toInt()) {
+        formatted = number.toInt().toString();
+      }
+    }
+    return formatted;
+  }
+
+  // Helper method to format price value (remove floating points)
+  String _formatPrice(String priceValue) {
+    if (priceValue == null || priceValue.isEmpty) return '0';
+    String formatted = priceValue;
+    if (formatted.contains('.')) {
+      // Remove .00, .0, or any decimal part if it's a whole number
+      double? number = double.tryParse(formatted);
+      if (number != null && number == number.toInt()) {
+        formatted = number.toInt().toString();
+      }
+    }
+    return formatted;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -4663,7 +6096,7 @@ class _TestPackagesCarouselState extends State<_TestPackagesCarousel> {
                         final testNames = _extractTestNames(pkg);
                         final discountedPrice = _calculateDiscountedPrice(
                           pkg['baseprice']?.toString() ?? '0',
-                          pkg['discountvalue']?.toString() ?? '0',
+                          pkg['discountvalue']?.toString() ?? pkg['discount_value']?.toString() ?? '0',
                         );
                         
               return AnimatedContainer(
@@ -4671,8 +6104,9 @@ class _TestPackagesCarouselState extends State<_TestPackagesCarousel> {
                 margin: EdgeInsets.only(right: index == packages.length - 1 ? 0 : 4),
                 child: PackageCard(
                             title: pkg['packagename'] ?? 'Package',
-                            discount: '${pkg['discountvalue']?.toString() ?? '0'}%',
+                            discount: _formatDiscount(pkg['discountvalue']?.toString() ?? pkg['discount_value']?.toString() ?? '0'),
                             price: discountedPrice,
+                            originalPrice: '₹${_formatPrice(pkg['baseprice']?.toString() ?? '0')}',
                             parameters: testNames.length,
                             tests: testNames.length,
                             reportTime: '24 hours', // Default value
@@ -4965,28 +6399,47 @@ class _DiagnosticsTestCard extends StatelessWidget {
 class _WomenCareGrid extends StatelessWidget {
   const _WomenCareGrid({super.key});
 
+  void _navigateToTestsWithCategory(BuildContext context, String category, {int? tabIndex}) {
+    // Find the LandingPageState to access the tab controller
+    final landingPageState = context.findAncestorStateOfType<_LandingPageState>();
+    if (landingPageState != null) {
+      // Navigate to Tests tab (index 1) and pass the category and tab index
+      landingPageState._navigateToTestsTab(category, tabIndex: tabIndex);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final items = [
       {
         'icon': Icons.female,
         'label': 'PCOD Screening',
+        'category': 'pcod_screening',
       },
       {
         'icon': Icons.bloodtype,
         'label': 'Blood Studies',
+        'category': 'blood_studies',
       },
       {
         'icon': Icons.pregnant_woman,
         'label': 'Pregnancy',
+        'category': 'pregnancy_tests',
       },
       {
         'icon': Icons.medication_outlined,
         'label': 'Iron Studies',
+        'category': 'iron_studies',
       },
       {
         'icon': Icons.abc,
         'label': 'Vitamin',
+        'category': 'vitamin_tests',
+      },
+      {
+        'icon': Icons.bug_report,
+        'label': 'Viral organs / Diseases',
+        'category': 'viral_organs_diseases',
       },
     ];
     // Use outlined icons and left-align content
@@ -4996,6 +6449,7 @@ class _WomenCareGrid extends StatelessWidget {
       Icons.pregnant_woman_outlined,
       Icons.medication_outlined,
       Icons.abc_outlined,
+      Icons.bug_report_outlined,
     ];
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8.0),
@@ -5011,32 +6465,38 @@ class _WomenCareGrid extends StatelessWidget {
         ),
         itemBuilder: (context, index) {
           final item = items[index];
-          return Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFE0E0E0)),
+          return GestureDetector(
+            onTap: () => _navigateToTestsWithCategory(
+              context, 
+              item['category'] as String,
             ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Icon(outlinedIcons[index], color: Colors.black, size: 36),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Text(
-                      item['label'] as String,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w500,
-                        fontSize: 14,
-                        color: Colors.black,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE0E0E0)),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Icon(outlinedIcons[index], color: Colors.black, size: 36),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Text(
+                        item['label'] as String,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w500,
+                          fontSize: 14,
+                          color: Colors.black,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           );
@@ -5124,6 +6584,121 @@ class _HelpBookingCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+// Cancel Appointment Dialog
+class _CancelAppointmentDialog extends StatefulWidget {
+  @override
+  _CancelAppointmentDialogState createState() => _CancelAppointmentDialogState();
+}
+
+class _CancelAppointmentDialogState extends State<_CancelAppointmentDialog> {
+  final TextEditingController _reasonController = TextEditingController();
+  bool _refundToWallet = true;
+  
+  @override
+  void dispose() {
+    _reasonController.dispose();
+    super.dispose();
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text(
+        'Cancel Appointment',
+        style: TextStyle(
+          fontSize: 20,
+          fontWeight: FontWeight.w600,
+          color: Color(0xFF1E293B),
+        ),
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Please provide a reason for cancellation:',
+            style: TextStyle(
+              fontSize: 14,
+              color: Color(0xFF64748B),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _reasonController,
+            maxLines: 3,
+            decoration: InputDecoration(
+              hintText: 'e.g., Emergency came up, need to reschedule',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              contentPadding: const EdgeInsets.all(12),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Checkbox(
+                value: _refundToWallet,
+                onChanged: (value) {
+                  setState(() {
+                    _refundToWallet = value ?? true;
+                  });
+                },
+                activeColor: AppColors.primaryBlue,
+              ),
+              const Expanded(
+                child: Text(
+                  'Refund amount to wallet',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Color(0xFF374151),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text(
+            'Cancel',
+            style: TextStyle(
+              color: Color(0xFF64748B),
+            ),
+          ),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            final reason = _reasonController.text.trim();
+            if (reason.isEmpty) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Please provide a cancellation reason'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+              return;
+            }
+            
+            Navigator.of(context).pop({
+              'confirmed': true,
+              'reason': reason,
+              'refundToWallet': _refundToWallet,
+            });
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.red,
+            foregroundColor: Colors.white,
+          ),
+          child: const Text('Confirm Cancel'),
+        ),
+      ],
     );
   }
 } 

@@ -508,21 +508,48 @@ class ApiService {
     int limit = 10,
     String sortBy = 'created_at',
     String sortOrder = 'desc',
+    String? search,
+    String? category,
+    String? organizationId,
   }) async {
     try {
       print('🔄 API Service: Making packages API call to ${ApiConfig.baseUrl}${ApiConfig.mobilePackages}');
-      print('🔄 API Service: Request body: {"page": $page, "limit": $limit, "sort_by": "$sortBy", "sort_order": "$sortOrder"}');
+      
+      final requestBody = <String, dynamic>{
+        'page': page,
+        'limit': limit,
+        'sort_by': sortBy,
+        'sort_order': sortOrder,
+      };
+      
+      // Add search parameter if provided
+      print('🔍 Before adding search - search value: "$search"');
+      if (search != null && search.isNotEmpty) {
+        requestBody['search'] = search;
+        print('🔍 Search parameter added to packages request body');
+      } else {
+        print('🔍 Search parameter NOT added to packages request body');
+      }
+      
+      // Add category parameter if provided
+      if (category != null && category.isNotEmpty) {
+        requestBody['category'] = category;
+        print('🏷️ Category parameter added to packages request body: $category');
+      }
+      
+      // Add organization ID parameter if provided
+      if (organizationId != null && organizationId.isNotEmpty) {
+        requestBody['organization_id'] = organizationId;
+        print('🏥 Organization ID parameter added to packages request body: $organizationId');
+      }
+      
+      print('🔄 API Service: Request body: ${jsonEncode(requestBody)}');
       
       final headers = await _headers;
       final response = await http.post(
         Uri.parse('${ApiConfig.baseUrl}${ApiConfig.mobilePackages}'),
         headers: headers,
-        body: jsonEncode({
-          'page': page,
-          'limit': limit,
-          'sort_by': sortBy,
-          'sort_order': sortOrder,
-        }),
+        body: jsonEncode(requestBody),
       ).timeout(
         const Duration(seconds: 10),
         onTimeout: () {
@@ -564,18 +591,51 @@ class ApiService {
     int limit = 10,
     double latitude = 12.95154427492096,
     double longitude = 80.25149535327924,
+    String? search,
+    String? category,
+    String? organizationId,
   }) async {
     try {
       final headers = await _headers;
+      final requestBody = <String, dynamic>{
+        'page': page,
+        'limit': limit,
+        'latitude': latitude,
+        'longitude': longitude,
+      };
+      
+      // Add search parameter if provided
+      print('🔍 Before adding search - search value: "$search"');
+      print('🔍 Search is null: ${search == null}');
+      print('🔍 Search is empty: ${search?.isEmpty ?? true}');
+      
+      if (search != null && search.isNotEmpty) {
+        requestBody['search'] = search;
+        print('🔍 Search parameter added to request body');
+      } else {
+        print('🔍 Search parameter NOT added to request body');
+      }
+      
+      // Add category parameter if provided
+      if (category != null && category.isNotEmpty) {
+        requestBody['category'] = category;
+        print('🏷️ Category parameter added to request body: $category');
+      }
+      
+      // Add organization ID parameter if provided
+      if (organizationId != null && organizationId.isNotEmpty) {
+        requestBody['organization_id'] = organizationId;
+        print('🏥 Organization ID parameter added to tests request body: $organizationId');
+      }
+      
+      // Debug logging
+      print('🔍 API Request Body: ${jsonEncode(requestBody)}');
+      print('🔍 Search parameter: $search');
+      
       final response = await http.post(
         Uri.parse('${ApiConfig.baseUrl}${ApiConfig.diagnosisTests}'),
         headers: headers,
-        body: jsonEncode({
-          'page': page,
-          'limit': limit,
-          'latitude': latitude,
-          'longitude': longitude,
-        }),
+        body: jsonEncode(requestBody),
       );
 
       final responseData = jsonDecode(response.body);
@@ -590,6 +650,92 @@ class ApiService {
         return {
           'success': false,
           'message': responseData['message'] ?? 'Failed to get diagnosis tests',
+          'error': responseData['error'] ?? 'Unknown error',
+        };
+      }
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Network error occurred',
+        'error': e.toString(),
+      };
+    }
+  }
+
+  // Get organization-specific tests API
+  Future<Map<String, dynamic>> getOrganizationTests({
+    required String organizationId,
+    String? search,
+    String sortBy = 'testname',
+    String sortOrder = 'asc',
+  }) async {
+    try {
+      final headers = await _headers;
+      final requestBody = <String, dynamic>{
+        'search': search ?? '',
+        'sort_by': sortBy,
+        'sort_order': sortOrder,
+      };
+      
+      print('🏥 API Service: Making organization tests API call to ${ApiConfig.baseUrl}${ApiConfig.organizationTests}$organizationId/tests');
+      print('🏥 API Service: Request body: ${jsonEncode(requestBody)}');
+      
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.organizationTests}$organizationId/tests'),
+        headers: headers,
+        body: jsonEncode(requestBody),
+      );
+
+      final responseData = jsonDecode(response.body);
+      
+      if (response.statusCode == 200) {
+        return {
+          'success': true,
+          'data': responseData['data'],
+          'message': responseData['message'],
+        };
+      } else {
+        return {
+          'success': false,
+          'message': responseData['message'] ?? 'Failed to get organization tests',
+          'error': responseData['error'] ?? 'Unknown error',
+        };
+      }
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Network error occurred',
+        'error': e.toString(),
+      };
+    }
+  }
+
+  // Get organization-specific packages API
+  Future<Map<String, dynamic>> getOrganizationPackages({
+    required String organizationId,
+  }) async {
+    try {
+      final headers = await _headers;
+      
+      print('🏥 API Service: Making organization packages API call to ${ApiConfig.baseUrl}${ApiConfig.organizationTests}$organizationId/packages');
+      
+      final response = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.organizationTests}$organizationId/packages'),
+        headers: headers,
+      );
+
+      final responseData = jsonDecode(response.body);
+      
+      if (response.statusCode == 200) {
+        return {
+          'success': true,
+          'data': responseData['data'],
+          'message': responseData['message'],
+        };
+      } else {
+        return {
+          'success': false,
+          'message': responseData['message'] ?? 'Failed to get organization packages',
           'error': responseData['error'] ?? 'Unknown error',
         };
       }
@@ -1231,13 +1377,13 @@ class ApiService {
     String? addressLine2,
     required String city,
     required String state,
-    required String country,
+    String? country,
     required String pincode,
     bool isPrimary = false,
     String? postalCode,
     double? latitude,
     double? longitude,
-    required String contactNumber,
+    String? contactNumber,
     BuildContext? context,
   }) async {
     try {
@@ -1249,13 +1395,13 @@ class ApiService {
         if (addressLine2 != null && addressLine2.isNotEmpty) 'address_line2': addressLine2,
         'city': city,
         'state': state,
-        'country': country,
+        if (country != null && country.isNotEmpty) 'country': country,
         'pincode': pincode,
         'is_primary': isPrimary,
         if (postalCode != null && postalCode.isNotEmpty) 'postal_code': postalCode,
         if (latitude != null) 'latitude': latitude,
         if (longitude != null) 'longitude': longitude,
-        'contact_number': contactNumber,
+        if (contactNumber != null && contactNumber.isNotEmpty) 'contact_number': contactNumber,
       };
 
       final response = await http.post(
@@ -1311,13 +1457,13 @@ class ApiService {
     String? addressLine2,
     required String city,
     required String state,
-    required String country,
+    String? country,
     required String pincode,
     bool isPrimary = false,
     String? postalCode,
     double? latitude,
     double? longitude,
-    required String contactNumber,
+    String? contactNumber,
     BuildContext? context,
   }) async {
     try {
@@ -1342,13 +1488,13 @@ class ApiService {
         if (addressLine2 != null && addressLine2.isNotEmpty) 'address_line2': addressLine2,
         'city': city,
         'state': state,
-        'country': country,
+        if (country != null && country.isNotEmpty) 'country': country,
         'pincode': pincode,
         'is_primary': isPrimary,
         if (postalCode != null && postalCode.isNotEmpty) 'postal_code': postalCode,
         if (latitude != null) 'latitude': latitude,
         if (longitude != null) 'longitude': longitude,
-        'contact_number': contactNumber,
+        if (contactNumber != null && contactNumber.isNotEmpty) 'contact_number': contactNumber,
       };
 
       final response = await http.put(
@@ -1491,6 +1637,117 @@ class ApiService {
       return _handleResponse(response, context);
     } catch (e) {
       print('❌ Error creating appointment: $e');
+      return {
+        'success': false,
+        'message': 'Network error occurred',
+        'error': e.toString(),
+      };
+    }
+  }
+
+  Future<Map<String, dynamic>> bookMultiLabAppointment(Map<String, dynamic> bookingData) async {
+    try {
+      print('🔄 Booking multi-lab appointment with data: $bookingData');
+      
+      final headers = await _headers;
+      
+      // Use the multi-lab appointment endpoint
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.multiLabAppointment}'),
+        headers: headers,
+        body: json.encode(bookingData),
+      );
+
+      print('📊 Multi-lab booking response status: ${response.statusCode}');
+      print('📊 Multi-lab booking response body: ${response.body}');
+      
+      // Check if this is a network connectivity issue
+      if (response.statusCode == 0) {
+        return {
+          'success': false,
+          'message': 'Network connection failed. Please check your internet connection.',
+          'error': 'Connection timeout or no internet',
+        };
+      }
+      
+      // Check for server errors
+      if (response.statusCode >= 500) {
+        return {
+          'success': false,
+          'message': 'Server error occurred. Please try again later.',
+          'error': 'Server error ${response.statusCode}',
+        };
+      }
+      
+      return _handleResponse(response, null);
+    } catch (e) {
+      print('❌ Error booking multi-lab appointment: $e');
+      return {
+        'success': false,
+        'message': 'Network error occurred',
+        'error': e.toString(),
+      };
+        }
+  }
+
+  // Get Appointment Details API
+  Future<Map<String, dynamic>> getAppointmentDetails({
+    required String appointmentId,
+    BuildContext? context,
+  }) async {
+    try {
+      print('🔄 Fetching appointment details for ID: $appointmentId');
+      
+      final headers = await _headers;
+      final response = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/mobile/appointments/$appointmentId/details'),
+        headers: headers,
+      );
+
+      print('📊 Appointment details response status: ${response.statusCode}');
+      print('📊 Appointment details response body: ${response.body}');
+      
+      return _handleResponse(response, context);
+    } catch (e) {
+      print('❌ Error fetching appointment details: $e');
+      return {
+        'success': false,
+        'message': 'Network error occurred',
+        'error': e.toString(),
+      };
+    }
+  }
+  
+  // Cancel Appointment API
+  Future<Map<String, dynamic>> cancelAppointment({
+    required String appointmentId,
+    required String cancellationReason,
+    required bool refundToWallet,
+    BuildContext? context,
+  }) async {
+    try {
+      print('🔄 Cancelling appointment with ID: $appointmentId');
+      print('🔄 Cancellation reason: $cancellationReason');
+      print('🔄 Refund to wallet: $refundToWallet');
+      
+      final headers = await _headers;
+      final requestBody = {
+        'cancellation_reason': cancellationReason,
+        'refund_to_wallet': refundToWallet,
+      };
+      
+      final response = await http.delete(
+        Uri.parse('${ApiConfig.baseUrl}/mobile/appointments/$appointmentId'),
+        headers: headers,
+        body: json.encode(requestBody),
+      );
+
+      print('📊 Cancel appointment response status: ${response.statusCode}');
+      print('📊 Cancel appointment response body: ${response.body}');
+      
+      return _handleResponse(response, context);
+    } catch (e) {
+      print('❌ Error cancelling appointment: $e');
       return {
         'success': false,
         'message': 'Network error occurred',

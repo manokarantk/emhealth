@@ -272,17 +272,14 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
             child: Column(
               children: [
                 const SizedBox(height: 32),
-                // Illustration (placeholder)
+                // Logo
                 SizedBox(
                   height: 160,
                   child: Image.asset(
-                    'assets/otp_illustration.png',
+                    'assets/logo.jpg',
+                    height: 120,
+                    width: 120,
                     fit: BoxFit.contain,
-                    errorBuilder: (context, error, stackTrace) => Icon(
-                      Icons.verified_user,
-                      size: 120,
-                      color: AppColors.primaryBlue.withOpacity(0.2),
-                    ),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -313,21 +310,54 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                       _editingPhone
                           ? Column(
                               children: [
-                                IntlPhoneField(
-                                  initialCountryCode: _countryCode.replaceAll('+', ''),
-                                  initialValue: _phoneNumber,
-                                  decoration: InputDecoration(
-                                    labelText: 'Mobile Number',
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
+                                Container(
+                                  decoration: BoxDecoration(
+                                    border: Border.all(color: Colors.grey.shade300),
+                                    borderRadius: BorderRadius.circular(12),
                                   ),
-                                  onChanged: (phone) {
-                                    setState(() {
-                                      _phoneNumber = phone.number;
-                                      _countryCode = '+${phone.countryCode}';
-                                    });
-                                  },
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                                        decoration: BoxDecoration(
+                                          color: Colors.grey.shade100,
+                                          borderRadius: const BorderRadius.only(
+                                            topLeft: Radius.circular(12),
+                                            bottomLeft: Radius.circular(12),
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Text('🇮🇳', style: TextStyle(fontSize: 20)),
+                                            const SizedBox(width: 4),
+                                            const Text('+91', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+                                          ],
+                                        ),
+                                      ),
+                                      Expanded(
+                                        child: TextFormField(
+                                          initialValue: _phoneNumber,
+                                          keyboardType: TextInputType.phone,
+                                          decoration: const InputDecoration(
+                                            hintText: 'Enter Mobile Number',
+                                            border: InputBorder.none,
+                                            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                                          ),
+                                          inputFormatters: [
+                                            FilteringTextInputFormatter.digitsOnly,
+                                            LengthLimitingTextInputFormatter(10),
+                                          ],
+                                          onChanged: (value) {
+                                            setState(() {
+                                              _phoneNumber = value;
+                                              _countryCode = '+91';
+                                            });
+                                          },
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                                 const SizedBox(height: 8),
                                 ElevatedButton(
