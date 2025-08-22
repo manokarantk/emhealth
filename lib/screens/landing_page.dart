@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:async';
+import 'dart:convert';
 import '../constants/colors.dart';
 import '../widgets/package_card.dart';
 import '../widgets/tests_list_tab.dart';
@@ -19,6 +20,7 @@ import '../services/location_service.dart';
 import '../utils/auth_utils.dart';
 import 'package:geolocator/geolocator.dart';
 import '../widgets/add_money_bottom_sheet.dart';
+import '../services/notification_service.dart';
 
 class LandingPage extends StatefulWidget {
   const LandingPage({super.key});
@@ -61,6 +63,38 @@ class _LandingPageState extends State<LandingPage> {
   void initState() {
     super.initState();
     _loadCartItems();
+  }
+
+  void _testNotification() async {
+    try {
+      final notificationService = NotificationService();
+      await notificationService.showCustomNotification(
+        title: 'EmHealth Notification',
+        body: 'This is a test notification from EmHealth app!',
+        payload: json.encode({
+          'type': 'test',
+          'id': 'test_${DateTime.now().millisecondsSinceEpoch}',
+        }),
+      );
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Test notification sent!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error sending notification: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -688,8 +722,10 @@ class _HomeTabState extends State<HomeTab> {
         final cartData = result['data'];
         final items = List<Map<String, dynamic>>.from(cartData['items'] ?? []);
         
-        // Extract test names from cart items
-        final Set<String> serverCartItems = items.map((item) => item['test_name'] as String).toSet();
+        // Extract test names and package names from cart items
+        final Set<String> serverCartItems = items.map((item) {
+          return (item['test_name'] ?? item['package_name'] ?? 'Unknown Item') as String;
+        }).toSet();
         
         setState(() {
           this.cartData = cartData;
@@ -759,6 +795,39 @@ class _HomeTabState extends State<HomeTab> {
           _isLoadingCart = false;
         });
       }
+    }
+  }
+
+  Future<void> _refreshCartData() async {
+    try {
+      // Load cart from API
+      final apiService = ApiService();
+      final result = await apiService.getCart();
+      
+      if (result['success'] && mounted) {
+        final cartData = result['data'];
+        final items = List<Map<String, dynamic>>.from(cartData['items'] ?? []);
+        
+        print('🛒 CART REFRESH SUCCESS:');
+        print('Updated cart data from API: $cartData');
+        print('Updated cart items from API: $items');
+        
+        // Extract test names and package names from cart items
+        final Set<String> serverCartItems = items.map((item) {
+          return (item['test_name'] ?? item['package_name'] ?? 'Unknown Item') as String;
+        }).toSet();
+        
+        setState(() {
+          this.cartData = cartData;
+          cartItems = serverCartItems;
+        });
+        
+        print('✅ Cart data refreshed successfully');
+        print('Updated cartData: ${this.cartData}');
+        print('Updated cartItems: $cartItems');
+      }
+    } catch (e) {
+      print('❌ CART REFRESH ERROR: $e');
     }
   }
 
@@ -852,41 +921,130 @@ class _HomeTabState extends State<HomeTab> {
                     )
                   : ListView.builder(
                       padding: const EdgeInsets.symmetric(horizontal: 20),
-                      itemCount: cartItems.length,
+                      itemCount: cartData['items']?.length ?? 0,
                       itemBuilder: (context, index) {
-                        final item = cartItems.elementAt(index);
+                        final cartItem = cartData['items'][index];
+                        final itemName = cartItem['test_name'] ?? cartItem['package_name'] ?? 'Unknown Item';
+                        final itemType = cartItem['lab_test_id'] != null ? 'Test' : 'Package';
+                        final itemId = cartItem['id'] ?? cartItem['lab_test_id'] ?? cartItem['lab_package_id'] ?? '';
+                        
                         return Card(
                           margin: const EdgeInsets.only(bottom: 12),
                           child: ListTile(
-                            leading: const Icon(
-                              Icons.medical_services,
+                            leading: Icon(
+                              itemType == 'Test' ? Icons.science : Icons.inventory,
                               color: AppColors.primaryBlue,
                             ),
                             title: Text(
-                              item,
+                              itemName,
                               style: const TextStyle(
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
-                            subtitle: Text(
-                              'Test/Package',
-                              style: TextStyle(
-                                color: Colors.grey[600],
-                                fontSize: 12,
-                              ),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  itemType,
+                                  style: TextStyle(
+                                    color: Colors.grey[600],
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                if (cartItem['price'] != null)
+                                  Text(
+                                    '₹${cartItem['price']}',
+                                    style: const TextStyle(
+                                      color: AppColors.primaryBlue,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                              ],
                             ),
                             trailing: IconButton(
                               icon: const Icon(
                                 Icons.remove_circle_outline,
                                 color: Colors.red,
                               ),
-                              onPressed: () {
-                                // Remove item from cart
-                                setState(() {
-                                  cartItems.remove(item);
-                                });
-                                Navigator.pop(context);
-                                _showCartSummaryBottomSheet(context);
+                              onPressed: () async {
+                                // Show loading indicator
+                                showDialog(
+                                  context: context,
+                                  barrierDismissible: false,
+                                  builder: (BuildContext context) {
+                                    return const Center(
+                                      child: CircularProgressIndicator(),
+                                    );
+                                  },
+                                );
+                                
+                                try {
+                                  // Remove from database via API
+                                  final apiService = ApiService();
+                                  final result = await apiService.removeFromCart(itemId);
+                                  
+                                  if (result['success']) {
+                                    // Refresh cart data from API first
+                                    await _refreshCartData();
+                                    
+                                    // Close loading dialog
+                                    Navigator.pop(context);
+                                    
+                                    // Close bottom sheet
+                                    Navigator.pop(context);
+                                    
+                                    // Show success message
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Item removed from cart successfully'),
+                                        backgroundColor: Colors.green,
+                                        duration: Duration(seconds: 2),
+                                      ),
+                                    );
+                                    
+                                    // Force rebuild of the entire widget tree
+                                    if (mounted) {
+                                      setState(() {});
+                                    }
+                                    
+                                    // Notify parent widget to refresh cart data
+                                    widget.onCartChanged();
+                                    
+                                    // Force parent widget to rebuild
+                                    if (mounted) {
+                                      // Trigger a rebuild of the parent widget
+                                      final parentState = context.findAncestorStateOfType<_LandingPageState>();
+                                      if (parentState != null && parentState.mounted) {
+                                        parentState.setState(() {});
+                                      }
+                                    }
+                                  } else {
+                                    // Close loading dialog
+                                    Navigator.pop(context);
+                                    
+                                    // Show error message
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(result['message'] ?? 'Failed to remove item from cart'),
+                                        backgroundColor: Colors.red,
+                                        duration: const Duration(seconds: 3),
+                                      ),
+                                    );
+                                  }
+                                } catch (e) {
+                                  // Close loading dialog
+                                  Navigator.pop(context);
+                                  
+                                  // Show error message
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Error removing item: ${e.toString()}'),
+                                      backgroundColor: Colors.red,
+                                      duration: const Duration(seconds: 3),
+                                    ),
+                                  );
+                                }
                               },
                             ),
                           ),
@@ -1572,7 +1730,10 @@ class _HomeTabState extends State<HomeTab> {
                       ),
                     ),
                           const SizedBox(height: 12),
-                          _TopDiagnosticsCarousel(),
+                          _TopDiagnosticsCarousel(
+                            cartItems: widget.cartItems,
+                            onAddToCart: widget.onAddToCart,
+                          ),
                     const SizedBox(height: 24),
                           // Popular Health Packages Section
                     Padding(
@@ -1596,7 +1757,10 @@ class _HomeTabState extends State<HomeTab> {
                         ],
                       ),
                     ),
-                          _TestPackagesCarousel(),
+                          _TestPackagesCarousel(
+                            cartItems: widget.cartItems,
+                            onAddToCart: widget.onAddToCart,
+                          ),
                     const SizedBox(height: 24),
                     // For Women Care Section
                     const Padding(
@@ -5906,6 +6070,14 @@ class _OfferBannerCarouselState extends State<OfferBannerCarousel> {
 } 
 
 class _TestPackagesCarousel extends StatefulWidget {
+  final Set<String> cartItems;
+  final Future<void> Function(String) onAddToCart;
+
+  const _TestPackagesCarousel({
+    required this.cartItems,
+    required this.onAddToCart,
+  });
+
   @override
   State<_TestPackagesCarousel> createState() => _TestPackagesCarouselState();
 }
@@ -6110,7 +6282,58 @@ class _TestPackagesCarouselState extends State<_TestPackagesCarousel> {
                             parameters: testNames.length,
                             tests: testNames.length,
                             reportTime: '24 hours', // Default value
-                  onAdd: () {},
+                  isInCart: widget.cartItems.contains(pkg['packagename'] ?? 'Package'),
+                  onAdd: () async {
+                    final packageName = pkg['packagename'] ?? 'Package';
+                    
+                    try {
+                      // Call the actual API to add to cart
+                      final apiService = ApiService();
+                      final result = await apiService.addToCart(
+                        price: double.tryParse(pkg['baseprice']?.toString() ?? '0') ?? 0.0,
+                        testName: packageName,
+                        labTestId: 'dummy_test_id', // Required but not used when packageId is provided
+                        packageId: pkg['id']?.toString() ?? 'default_package_id',
+                        preferredDate: null,
+                        preferredTime: null,
+                      );
+                      
+                      if (result['success']) {
+                        // Call parent's onAddToCart to update UI
+                        await widget.onAddToCart(packageName);
+                        
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('$packageName added to cart!'),
+                              backgroundColor: Colors.green,
+                              duration: const Duration(seconds: 2),
+                            ),
+                          );
+                        }
+                      } else {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(result['message'] ?? 'Failed to add to cart'),
+                              backgroundColor: Colors.red,
+                              duration: const Duration(seconds: 2),
+                            ),
+                          );
+                        }
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Error adding to cart: ${e.toString()}'),
+                            backgroundColor: Colors.red,
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      }
+                    }
+                  },
                   width: MediaQuery.of(context).size.width * 0.8,
                             testNames: testNames,
                 ),
@@ -6142,6 +6365,14 @@ class _TestPackagesCarouselState extends State<_TestPackagesCarousel> {
 } 
 
 class _TopDiagnosticsCarousel extends StatefulWidget {
+  final Set<String> cartItems;
+  final Future<void> Function(String) onAddToCart;
+
+  const _TopDiagnosticsCarousel({
+    required this.cartItems,
+    required this.onAddToCart,
+  });
+
   @override
   State<_TopDiagnosticsCarousel> createState() => _TopDiagnosticsCarouselState();
 }
@@ -6249,7 +6480,57 @@ class _TopDiagnosticsCarouselState extends State<_TopDiagnosticsCarousel> {
                             title: diag['testname'] ?? diag['shortname'] ?? 'Test',
                             reportTime: diag['collectioninstruction'] ?? '6 hours',
                             alsoKnownAs: diag['shortname'] ?? diag['testname'] ?? 'Test',
-                  onAdd: () {},
+                            isInCart: widget.cartItems.contains(diag['testname'] ?? diag['shortname'] ?? 'Test'),
+                  onAdd: () async {
+                    final testName = diag['testname'] ?? diag['shortname'] ?? 'Test';
+                    
+                    try {
+                      // Call the actual API to add to cart
+                      final apiService = ApiService();
+                      final result = await apiService.addToCart(
+                        price: 0.0, // Default price, will be updated by server
+                        testName: testName,
+                        labTestId: diag['id']?.toString() ?? 'default_test_id',
+                        preferredDate: null,
+                        preferredTime: null,
+                      );
+                      
+                      if (result['success']) {
+                        // Call parent's onAddToCart to update UI
+                        await widget.onAddToCart(testName);
+                        
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('$testName added to cart!'),
+                              backgroundColor: Colors.green,
+                              duration: const Duration(seconds: 2),
+                            ),
+                          );
+                        }
+                      } else {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(result['message'] ?? 'Failed to add to cart'),
+                              backgroundColor: Colors.red,
+                              duration: const Duration(seconds: 2),
+                            ),
+                          );
+                        }
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Error adding to cart: ${e.toString()}'),
+                            backgroundColor: Colors.red,
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      }
+                    }
+                  },
                   onViewDetails: () {},
                 ),
               );
@@ -6279,12 +6560,13 @@ class _TopDiagnosticsCarouselState extends State<_TopDiagnosticsCarousel> {
   }
 }
 
-class _DiagnosticsTestCard extends StatelessWidget {
+class _DiagnosticsTestCard extends StatefulWidget {
   final String title;
   final String reportTime;
   final String alsoKnownAs;
-  final VoidCallback onAdd;
+  final Future<void> Function() onAdd;
   final VoidCallback onViewDetails;
+  final bool isInCart;
 
   const _DiagnosticsTestCard({
     required this.title,
@@ -6292,7 +6574,43 @@ class _DiagnosticsTestCard extends StatelessWidget {
     required this.alsoKnownAs,
     required this.onAdd,
     required this.onViewDetails,
+    required this.isInCart,
   });
+
+  @override
+  State<_DiagnosticsTestCard> createState() => _DiagnosticsTestCardState();
+}
+
+class _DiagnosticsTestCardState extends State<_DiagnosticsTestCard> {
+  bool _isLoading = false;
+  bool _isAdded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _isAdded = widget.isInCart;
+  }
+
+  @override
+  void didUpdateWidget(_DiagnosticsTestCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isInCart != widget.isInCart) {
+      setState(() {
+        _isAdded = widget.isInCart;
+      });
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Update the added state whenever dependencies change (like cart updates)
+    if (_isAdded != widget.isInCart) {
+      setState(() {
+        _isAdded = widget.isInCart;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -6312,7 +6630,7 @@ class _DiagnosticsTestCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    title,
+                    widget.title,
                     style: const TextStyle(
                       fontWeight: FontWeight.w700,
                       fontSize: 18,
@@ -6321,23 +6639,51 @@ class _DiagnosticsTestCard extends StatelessWidget {
                   ),
                 ),
                 OutlinedButton(
-                  onPressed: onAdd,
+                  onPressed: _isLoading ? null : () async {
+                    setState(() {
+                      _isLoading = true;
+                    });
+                    
+                    try {
+                      await widget.onAdd();
+                      // Don't set _isAdded here as it will be updated by didUpdateWidget
+                      setState(() {
+                        _isLoading = false;
+                      });
+                    } catch (e) {
+                      setState(() {
+                        _isLoading = false;
+                      });
+                    }
+                  },
                   style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Color(0xFF2ECC71)),
+                    side: BorderSide(
+                      color: const Color(0xFF2ECC71),
+                    ),
+                    backgroundColor: _isAdded ? const Color(0xFF2ECC71) : Colors.transparent,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
                     padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 0),
                     minimumSize: const Size(0, 36),
                   ),
-                  child: const Text(
-                    '+ Add',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 16,
-                      color: Color(0xFF2ECC71),
-                    ),
-                  ),
+                  child: _isLoading
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF2ECC71)),
+                          ),
+                        )
+                      : Text(
+                          _isAdded ? 'Added' : '+ Add',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 16,
+                            color: _isAdded ? Colors.white : const Color(0xFF2ECC71),
+                          ),
+                        ),
                 ),
               ],
             ),
@@ -6356,7 +6702,7 @@ class _DiagnosticsTestCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 4),
                 Text(
-                  reportTime,
+                  widget.reportTime,
                   style: const TextStyle(
                     color: Color(0xFFFF8C32),
                     fontWeight: FontWeight.bold,
@@ -6380,7 +6726,7 @@ class _DiagnosticsTestCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 6),
                 Text(
-                  alsoKnownAs,
+                  widget.alsoKnownAs,
                   style: const TextStyle(
                     color: Color(0xFF6C7A89),
                     fontSize: 14,

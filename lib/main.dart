@@ -8,10 +8,20 @@ import 'screens/profile_completion_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/landing_page.dart';
 import 'theme/app_theme.dart';
+import 'services/notification_service.dart';
+import 'widgets/notification_test_widget.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await SharedPreferences.getInstance();
+  
+  // Initialize Firebase notifications
+  try {
+    await NotificationService().initialize();
+  } catch (e) {
+    print('❌ Failed to initialize notifications: $e');
+  }
+  
   runApp(const MyApp());
 }
 
@@ -33,6 +43,7 @@ class MyApp extends StatelessWidget {
         '/profile-completion': (context) => const ProfileCompletionScreen(),
         '/home': (context) => const HomeScreen(),
         '/landing': (context) => const LandingPage(),
+        '/notification-test': (context) => const NotificationTestWidget(),
         // Add more routes as needed
       },
     );

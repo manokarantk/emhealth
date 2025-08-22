@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/colors.dart';
 import '../services/api_service.dart';
+import '../services/location_service.dart';
 import 'checkout_screen.dart';
 import 'lab_wise_summary_screen.dart';
 
@@ -49,6 +50,95 @@ class _LabSelectionScreenState extends State<LabSelectionScreen> {
     if (discountValue == null || discountValue.toString().isEmpty) return false;
     double? number = double.tryParse(discountValue.toString());
     return number != null && number > 0;
+  }
+
+  // Helper method to safely get distance from lab data
+  dynamic _getSafeDistance(Map<String, dynamic> lab) {
+    try {
+      if (lab.containsKey('distance')) {
+        return lab['distance'];
+      }
+      return null;
+    } catch (e) {
+      print('🔍 Error accessing distance field: $e');
+      return null;
+    }
+  }
+
+  // Helper method to format distance value (converts meters to km)
+  String _formatDistance(dynamic distance) {
+    try {
+      print('🔍 Formatting distance: $distance (type: ${distance.runtimeType})');
+      
+      // Handle null or undefined values
+      if (distance == null) {
+        print('🔍 Distance is null, returning "Nearby"');
+        return 'Nearby';
+      }
+      
+      double distanceInMeters;
+      
+      // Handle different data types with explicit type checking
+      if (distance is double) {
+        distanceInMeters = distance;
+        print('🔍 Distance is double: $distanceInMeters');
+      } else if (distance is int) {
+        distanceInMeters = distance.toDouble();
+        print('🔍 Distance is int, converted to double: $distanceInMeters');
+      } else if (distance is String) {
+        final parsed = double.tryParse(distance);
+        if (parsed == null) {
+          print('🔍 Could not parse string distance value: "$distance", returning "Nearby"');
+          return 'Nearby';
+        }
+        distanceInMeters = parsed;
+        print('🔍 Distance is string, parsed to double: $distanceInMeters');
+      } else {
+        // For any other type, try to convert safely
+        try {
+          final distanceString = distance.toString();
+          final parsed = double.tryParse(distanceString);
+          if (parsed == null) {
+            print('🔍 Could not parse distance value: "$distanceString", returning "Nearby"');
+            return 'Nearby';
+          }
+          distanceInMeters = parsed;
+          print('🔍 Distance converted from ${distance.runtimeType} to double: $distanceInMeters');
+        } catch (conversionError) {
+          print('🔍 Error converting distance to string: $conversionError, returning "Nearby"');
+          return 'Nearby';
+        }
+      }
+      
+      // Validate the distance value
+      if (distanceInMeters.isNaN || distanceInMeters.isInfinite || distanceInMeters < 0) {
+        print('🔍 Invalid distance value: $distanceInMeters, returning "Nearby"');
+        return 'Nearby';
+      }
+      
+      // Convert meters to kilometers
+      final distanceInKm = distanceInMeters / 1000;
+      print('🔍 Distance in meters: $distanceInMeters, converted to km: $distanceInKm');
+      
+      String formattedDistance;
+      if (distanceInKm < 1) {
+        // Less than 1 km, show in meters
+        final meters = distanceInMeters.round();
+        formattedDistance = '${meters}m away';
+      } else if (distanceInKm < 10) {
+        // Less than 10 km, show with 1 decimal place
+        formattedDistance = '${distanceInKm.toStringAsFixed(1)}km away';
+      } else {
+        // 10 km or more, show as whole number
+        formattedDistance = '${distanceInKm.round()}km away';
+      }
+      
+      print('🔍 Formatted distance: $formattedDistance');
+      return formattedDistance;
+    } catch (e) {
+      print('❌ Unexpected error formatting distance: $e');
+      return 'Nearby';
+    }
   }
   
   @override
@@ -339,16 +429,52 @@ class _LabSelectionScreenState extends State<LabSelectionScreen> {
         }
       }
       
+      // Get user's current location
+      double? latitude;
+      double? longitude;
+      
+      try {
+        print('📍 Getting user location for lab selection...');
+        final locationService = LocationService();
+        final locationResult = await locationService.getCurrentLocation(context);
+        
+        if (locationResult['success'] == true) {
+          final locationData = locationResult['data'];
+          latitude = locationData['latitude'];
+          longitude = locationData['longitude'];
+          print('📍 User location obtained - Lat: $latitude, Long: $longitude');
+        } else {
+          print('⚠️ Could not get user location: ${locationResult['message']}');
+          print('📍 Proceeding without location data');
+        }
+      } catch (e) {
+        print('❌ Error getting user location: $e');
+        print('📍 Proceeding without location data');
+      }
+      
       // Call API to get available labs
       final apiService = ApiService();
       final result = await apiService.getOrganizationsProviders(
         testIds: testIds,
         packageIds: packageIds,
+        latitude: latitude,
+        longitude: longitude,
       );
       
       if (result['success'] == true) {
         final labsData = List<Map<String, dynamic>>.from(result['data']['organizations'] ?? []);
         print('✅ Loaded ${labsData.length} available labs for selection');
+        
+        // Debug: Print lab data structure to see available fields including distance
+        if (labsData.isNotEmpty) {
+          print('🔍 First lab data structure: ${labsData.first}');
+          print('🔍 Available fields in lab data: ${labsData.first.keys}');
+          if (labsData.first.containsKey('distance')) {
+            final distanceValue = labsData.first['distance'];
+            print('🔍 Distance field found: $distanceValue (type: ${distanceValue.runtimeType})');
+          }
+        }
+        
         return labsData;
       } else {
         print('❌ Failed to load available labs: ${result['message']}');
@@ -524,7 +650,7 @@ class _LabSelectionScreenState extends State<LabSelectionScreen> {
                                         ),
                                         const SizedBox(width: 4),
                                         Text(
-                                          'Nearby',
+                                          _formatDistance(_getSafeDistance(lab)),
                                           style: TextStyle(
                                             fontSize: 14,
                                             color: Colors.grey[600],

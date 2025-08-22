@@ -389,6 +389,118 @@ class ApiService {
     }
   }
 
+  // Add money to wallet with PayU payment API
+  Future<Map<String, dynamic>> addMoneyToWalletWithPayment({
+    required double amount,
+    required String paymentMethod,
+    required String description,
+    required String transactionId,
+    required String paymentId,
+  }) async {
+    try {
+      print('🔄 API Service: Making add money to wallet with payment API call');
+      print('🔄 API Service: Request body: {"amount": $amount, "payment_method": "$paymentMethod", "description": "$description", "transaction_id": "$transactionId", "payment_id": "$paymentId"}');
+
+      final headers = await _headers;
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.addMoneyToWallet}'),
+        headers: headers,
+        body: jsonEncode({
+          'amount': amount,
+          'payment_method': paymentMethod,
+          'description': description,
+          'transaction_id': transactionId,
+          'payment_id': paymentId,
+        }),
+      ).timeout(
+        const Duration(seconds: 15),
+        onTimeout: () {
+          print('🔄 API Service: Request timeout for add money to wallet with payment API');
+          throw Exception('Request timeout');
+        },
+      );
+
+      print('🔄 API Service: Response status code: ${response.statusCode}');
+      print('🔄 API Service: Response body: ${response.body}');
+
+      final responseData = jsonDecode(response.body);
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return {
+          'success': true,
+          'data': responseData['data'],
+          'message': responseData['message'],
+        };
+      } else {
+        return {
+          'success': false,
+          'message': responseData['message'] ?? 'Failed to add money to wallet',
+          'error': responseData['error'] ?? 'Unknown error',
+        };
+      }
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Network error occurred',
+        'error': e.toString(),
+      };
+    }
+  }
+
+  // Verify PayU payment API
+  Future<Map<String, dynamic>> verifyPayUPayment({
+    required String transactionId,
+    required String paymentId,
+    required double amount,
+  }) async {
+    try {
+      print('🔄 API Service: Making PayU payment verification API call');
+      print('🔄 API Service: Request body: {"transaction_id": "$transactionId", "payment_id": "$paymentId", "amount": $amount}');
+
+      final headers = await _headers;
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.verifyPayUPayment}'),
+        headers: headers,
+        body: jsonEncode({
+          'transaction_id': transactionId,
+          'payment_id': paymentId,
+          'amount': amount,
+        }),
+      ).timeout(
+        const Duration(seconds: 15),
+        onTimeout: () {
+          print('🔄 API Service: Request timeout for PayU payment verification API');
+          throw Exception('Request timeout');
+        },
+      );
+
+      print('🔄 API Service: Response status code: ${response.statusCode}');
+      print('🔄 API Service: Response body: ${response.body}');
+
+      final responseData = jsonDecode(response.body);
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return {
+          'success': true,
+          'data': responseData['data'],
+          'message': responseData['message'],
+        };
+      } else {
+        return {
+          'success': false,
+          'message': responseData['message'] ?? 'Failed to verify payment',
+          'error': responseData['error'] ?? 'Unknown error',
+        };
+      }
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Network error occurred',
+        'error': e.toString(),
+      };
+    }
+  }
+
   // Get appointment history API
   Future<Map<String, dynamic>> getAppointmentHistory({
     required String bookingType, // 'past' or 'future'
@@ -453,20 +565,38 @@ class ApiService {
     required String packageId,
     List<String> packageIds = const [],
     List<String> testIds = const [],
+    double? latitude,
+    double? longitude,
+    int page = 1,
+    int limit = 10,
   }) async {
     try {
       print('🔄 API Service: Making package organizations API call to ${ApiConfig.baseUrl}${ApiConfig.packageOrganizations}');
-      print('🔄 API Service: Request body: {"package_ids": $packageIds, "packageId": "$packageId", "test_ids": $testIds}');
+      
+      final Map<String, dynamic> requestBody = {
+        'package_ids': packageIds.isNotEmpty ? packageIds : [packageId],
+        'packageId': packageId,
+        'test_ids': testIds,
+        'page': page,
+        'limit': limit,
+      };
+      
+      // Add location data if provided
+      if (latitude != null && longitude != null) {
+        requestBody['latitude'] = latitude;
+        requestBody['longitude'] = longitude;
+        print('📍 API: Including location data for package organizations - Lat: $latitude, Long: $longitude');
+      } else {
+        print('📍 API: No location data provided for package organizations');
+      }
+      
+      print('🔄 API Service: Request body: ${jsonEncode(requestBody)}');
 
       final headers = await _headers;
       final response = await http.post(
         Uri.parse('${ApiConfig.baseUrl}${ApiConfig.packageOrganizations}'),
         headers: headers,
-        body: jsonEncode({
-          'package_ids': packageIds.isNotEmpty ? packageIds : [packageId],
-          'packageId': packageId,
-          'test_ids': testIds,
-        }),
+        body: jsonEncode(requestBody),
       ).timeout(
         const Duration(seconds: 10),
         onTimeout: () {
@@ -752,16 +882,32 @@ class ApiService {
   Future<Map<String, dynamic>> getOrganizationsProviders({
     required List<String> testIds,
     required List<String> packageIds,
+    double? latitude,
+    double? longitude,
   }) async {
     try {
       final headers = await _headers;
+      
+      final Map<String, dynamic> requestBody = {
+        'test_ids': testIds,
+        'package_ids': packageIds,
+      };
+      
+      // Add location data if provided
+      if (latitude != null && longitude != null) {
+        requestBody['latitude'] = latitude;
+        requestBody['longitude'] = longitude;
+        print('📍 API: Including location data - Lat: $latitude, Long: $longitude');
+      } else {
+        print('📍 API: No location data provided');
+      }
+      
+      print('📍 API: Request body for organizations/providers: ${jsonEncode(requestBody)}');
+      
       final response = await http.post(
         Uri.parse('${ApiConfig.baseUrl}${ApiConfig.organizationsProviders}'),
         headers: headers,
-        body: jsonEncode({
-          'test_ids': testIds,
-          'package_ids': packageIds,
-        }),
+        body: jsonEncode(requestBody),
       );
 
       final responseData = jsonDecode(response.body);
@@ -1395,7 +1541,7 @@ class ApiService {
         if (addressLine2 != null && addressLine2.isNotEmpty) 'address_line2': addressLine2,
         'city': city,
         'state': state,
-        if (country != null && country.isNotEmpty) 'country': country,
+        'country': country ?? 'India', // Default to India if not provided
         'pincode': pincode,
         'is_primary': isPrimary,
         if (postalCode != null && postalCode.isNotEmpty) 'postal_code': postalCode,
@@ -1488,7 +1634,7 @@ class ApiService {
         if (addressLine2 != null && addressLine2.isNotEmpty) 'address_line2': addressLine2,
         'city': city,
         'state': state,
-        if (country != null && country.isNotEmpty) 'country': country,
+        'country': country ?? 'India', // Default to India if not provided
         'pincode': pincode,
         'is_primary': isPrimary,
         if (postalCode != null && postalCode.isNotEmpty) 'postal_code': postalCode,
@@ -1748,6 +1894,28 @@ class ApiService {
       return _handleResponse(response, context);
     } catch (e) {
       print('❌ Error cancelling appointment: $e');
+      return {
+        'success': false,
+        'message': 'Network error occurred',
+        'error': e.toString(),
+      };
+    }
+  }
+
+  // Update FCM token API
+  Future<Map<String, dynamic>> updateFCMToken(String token) async {
+    try {
+      final headers = await _headers;
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/mobile/user/update-fcm-token'),
+        headers: headers,
+        body: jsonEncode({
+          'fcm_token': token,
+        }),
+      );
+
+      return _handleResponse(response, null);
+    } catch (e) {
       return {
         'success': false,
         'message': 'Network error occurred',

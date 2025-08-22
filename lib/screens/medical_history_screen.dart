@@ -143,6 +143,7 @@ class _MedicalHistoryScreenState extends State<MedicalHistoryScreen> {
                       ),
                       const SizedBox(height: 20),
                       DropdownButtonFormField<String>(
+                        value: null, // Add explicit value
                         decoration: InputDecoration(
                           labelText: 'Record Type',
                           prefixIcon: const Icon(Icons.category, color: AppColors.primaryBlue),

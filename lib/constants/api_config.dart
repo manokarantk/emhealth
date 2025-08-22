@@ -84,6 +84,9 @@ class ApiConfig {
   // Add money to wallet endpoint
   static const String addMoneyToWallet = '/mobile/wallet/add-money';
   
+  // PayU payment verification endpoint
+  static const String verifyPayUPayment = '/mobile/wallet/verify-payment';
+  
   // Appointments endpoints
   static const String createAppointment = '/mobile/appointments';
   static const String multiLabAppointment = '/mobile/appointments/multi-lab';

@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import '../services/location_service.dart';
 import '../constants/colors.dart';
 
-class PackageCard extends StatelessWidget {
+class PackageCard extends StatefulWidget {
   final String title;
   final String discount;
   final String price;
@@ -10,9 +11,62 @@ class PackageCard extends StatelessWidget {
   final int parameters;
   final int tests;
   final String reportTime;
-  final VoidCallback onAdd;
+  final Future<void> Function() onAdd;
   final double? width;
   final List<String> testNames;
+  final bool isInCart;
+
+
+
+  const PackageCard({
+    super.key,
+    required this.title,
+    required this.discount,
+    required this.price,
+    this.originalPrice,
+    required this.parameters,
+    required this.tests,
+    required this.reportTime,
+    required this.onAdd,
+    required this.testNames,
+    this.width,
+    required this.isInCart,
+  });
+
+  @override
+  State<PackageCard> createState() => _PackageCardState();
+}
+
+class _PackageCardState extends State<PackageCard> {
+  bool _isLoading = false;
+  bool _isAdded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _isAdded = widget.isInCart;
+  }
+
+  @override
+  void didUpdateWidget(PackageCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isInCart != widget.isInCart) {
+      setState(() {
+        _isAdded = widget.isInCart;
+      });
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Update the added state whenever dependencies change (like cart updates)
+    if (_isAdded != widget.isInCart) {
+      setState(() {
+        _isAdded = widget.isInCart;
+      });
+    }
+  }
 
   // Helper method to format discount value (remove floating points and handle 0%)
   String _formatDiscount(String discountValue) {
@@ -39,20 +93,6 @@ class PackageCard extends StatelessWidget {
     double? number = double.tryParse(discountValue);
     return number != null && number > 0;
   }
-
-  const PackageCard({
-    super.key,
-    required this.title,
-    required this.discount,
-    required this.price,
-    this.originalPrice,
-    required this.parameters,
-    required this.tests,
-    required this.reportTime,
-    required this.onAdd,
-    required this.testNames,
-    this.width,
-  });
 
   void _showTestNamesSheet(BuildContext context) {
     showModalBottomSheet(
@@ -164,12 +204,12 @@ class PackageCard extends StatelessWidget {
                       controller: scrollController,
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
-                      itemCount: testNames.length,
+                      itemCount: widget.testNames.length,
                       separatorBuilder: (context, idx) => const Divider(height: 1, color: Color(0xFFE0E0E0)),
                       itemBuilder: (context, idx) => ListTile(
                         leading: const Icon(Icons.check, color: Color(0xFF2ECC71), size: 20),
                         title: Text(
-                          testNames[idx],
+                          widget.testNames[idx],
                           style: const TextStyle(fontSize: 16),
                         ),
                         dense: true,
@@ -194,7 +234,7 @@ class PackageCard extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       elevation: 0,
       child: Container(
-        width: width ?? 340,
+        width: widget.width ?? 340,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -205,7 +245,7 @@ class PackageCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    title,
+                    widget.title,
                     style: const TextStyle(
                       fontWeight: FontWeight.w700,
                       fontSize: 17,
@@ -214,23 +254,51 @@ class PackageCard extends StatelessWidget {
                   ),
                 ),
                 OutlinedButton(
-                  onPressed: onAdd,
+                  onPressed: _isLoading ? null : () async {
+                    setState(() {
+                      _isLoading = true;
+                    });
+                    
+                    try {
+                      await widget.onAdd();
+                      // Don't set _isAdded here as it will be updated by didUpdateWidget
+                      setState(() {
+                        _isLoading = false;
+                      });
+                    } catch (e) {
+                      setState(() {
+                        _isLoading = false;
+                      });
+                    }
+                  },
                   style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Color(0xFF2ECC71)),
+                    side: BorderSide(
+                      color: const Color(0xFF2ECC71),
+                    ),
+                    backgroundColor: _isAdded ? const Color(0xFF2ECC71) : Colors.transparent,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
                     minimumSize: const Size(0, 30),
                   ),
-                  child: const Text(
-                    '+ Add',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                      color: Color(0xFF2ECC71),
-                    ),
-                  ),
+                  child: _isLoading
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF2ECC71)),
+                          ),
+                        )
+                      : Text(
+                          _isAdded ? 'Added' : '+ Add',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                            color: _isAdded ? Colors.white : const Color(0xFF2ECC71),
+                          ),
+                        ),
                 ),
               ],
             ),
@@ -239,7 +307,7 @@ class PackageCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                if (_shouldShowDiscount(discount))
+                if (_shouldShowDiscount(widget.discount))
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
                     decoration: BoxDecoration(
@@ -247,7 +315,7 @@ class PackageCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(24),
                     ),
                     child: Text(
-                      '${_formatDiscount(discount)}% Off',
+                      '${_formatDiscount(widget.discount)}% Off',
                       style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
@@ -258,7 +326,7 @@ class PackageCard extends StatelessWidget {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (originalPrice != null && originalPrice != price) ...[
+                    if (widget.originalPrice != null && widget.originalPrice != widget.price) ...[
                       Text(
                         'Starts from ',
                         style: const TextStyle(
@@ -269,7 +337,7 @@ class PackageCard extends StatelessWidget {
                       ),
                     ],
                     Text(
-                      price,
+                      widget.price,
                       style: const TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 20,
@@ -324,7 +392,7 @@ class PackageCard extends StatelessWidget {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Text(
-                            '$tests',
+                            '${widget.tests}',
                             style: const TextStyle(
                               color: Colors.black,
                               fontWeight: FontWeight.bold,
@@ -366,7 +434,7 @@ class PackageCard extends StatelessWidget {
                         ],
                       ),
                       Text(
-                        reportTime,
+                        widget.reportTime,
                         style: const TextStyle(
                           color: Color(0xFFFF8C32),
                           fontWeight: FontWeight.bold,
@@ -943,10 +1011,17 @@ class _OrganizationSelectionSheet extends StatefulWidget {
 class _OrganizationSelectionSheetState extends State<_OrganizationSelectionSheet> {
   List<Map<String, dynamic>> organizations = [];
   bool isLoading = true;
+  bool isLoadingMore = false;
   String? errorMessage;
   Map<String, bool> loadingStates = {};
   String? selectedOrganizationId;
   bool isAddingToCart = false;
+  
+  // Pagination variables
+  int currentPage = 1;
+  int pageSize = 10;
+  bool hasMoreData = true;
+  final ScrollController scrollController = ScrollController();
 
   // Helper method to check if discount should be shown
   bool _shouldShowDiscount(dynamic discountValue) {
@@ -959,6 +1034,24 @@ class _OrganizationSelectionSheetState extends State<_OrganizationSelectionSheet
   void initState() {
     super.initState();
     _loadOrganizations();
+    
+    // Add scroll listener for pagination
+    scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    scrollController.removeListener(_onScroll);
+    scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (scrollController.position.pixels >= scrollController.position.maxScrollExtent - 200) {
+      if (!isLoadingMore && hasMoreData) {
+        _loadMoreOrganizations();
+      }
+    }
   }
 
   Future<void> _loadOrganizations() async {
@@ -966,7 +1059,32 @@ class _OrganizationSelectionSheetState extends State<_OrganizationSelectionSheet
       setState(() {
         isLoading = true;
         errorMessage = null;
+        currentPage = 1;
+        hasMoreData = true;
       });
+
+      // Get user's current location
+      double? latitude;
+      double? longitude;
+      
+      try {
+        print('📍 Getting user location for package organizations...');
+        final locationService = LocationService();
+        final locationResult = await locationService.getCurrentLocation(context);
+        
+        if (locationResult['success'] == true) {
+          final locationData = locationResult['data'];
+          latitude = locationData['latitude'];
+          longitude = locationData['longitude'];
+          print('📍 User location obtained for package organizations - Lat: $latitude, Long: $longitude');
+        } else {
+          print('⚠️ Could not get user location for package organizations: ${locationResult['message']}');
+          print('📍 Proceeding without location data');
+        }
+      } catch (e) {
+        print('❌ Error getting user location for package organizations: $e');
+        print('📍 Proceeding without location data');
+      }
 
       final packageId = widget.package['id'] ?? '';
       final apiService = ApiService();
@@ -974,6 +1092,10 @@ class _OrganizationSelectionSheetState extends State<_OrganizationSelectionSheet
         packageId: packageId,
         packageIds: [packageId],
         testIds: [],
+        latitude: latitude,
+        longitude: longitude,
+        page: currentPage,
+        limit: pageSize,
       );
 
       if (result['success'] == true) {
@@ -992,6 +1114,7 @@ class _OrganizationSelectionSheetState extends State<_OrganizationSelectionSheet
         setState(() {
           organizations = filteredOrgs;
           isLoading = false;
+          hasMoreData = filteredOrgs.length >= pageSize;
         });
       } else {
         setState(() {
@@ -1003,6 +1126,74 @@ class _OrganizationSelectionSheetState extends State<_OrganizationSelectionSheet
       setState(() {
         errorMessage = 'Network error occurred';
         isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _loadMoreOrganizations() async {
+    if (isLoadingMore || !hasMoreData) return;
+
+    try {
+      setState(() {
+        isLoadingMore = true;
+      });
+
+      // Get user's current location
+      double? latitude;
+      double? longitude;
+      
+      try {
+        final locationService = LocationService();
+        final locationResult = await locationService.getCurrentLocation(context);
+        
+        if (locationResult['success'] == true) {
+          final locationData = locationResult['data'];
+          latitude = locationData['latitude'];
+          longitude = locationData['longitude'];
+        }
+      } catch (e) {
+        print('❌ Error getting user location for pagination: $e');
+      }
+
+      final packageId = widget.package['id'] ?? '';
+      final apiService = ApiService();
+      final result = await apiService.getPackageOrganizations(
+        packageId: packageId,
+        packageIds: [packageId],
+        testIds: [],
+        latitude: latitude,
+        longitude: longitude,
+        page: currentPage + 1,
+        limit: pageSize,
+      );
+
+      if (result['success'] == true) {
+        final data = result['data'];
+        final orgsList = data['organizations'] as List<dynamic>;
+        
+        // Filter out EmHealth organizations
+        final filteredOrgs = orgsList
+            .map((org) => org as Map<String, dynamic>)
+            .where((org) {
+              final orgName = org['name']?.toString().toLowerCase() ?? '';
+              return !orgName.contains('emhealth');
+            })
+            .toList();
+        
+        setState(() {
+          organizations.addAll(filteredOrgs);
+          currentPage++;
+          hasMoreData = filteredOrgs.length >= pageSize;
+          isLoadingMore = false;
+        });
+      } else {
+        setState(() {
+          isLoadingMore = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        isLoadingMore = false;
       });
     }
   }
@@ -1076,6 +1267,82 @@ class _OrganizationSelectionSheetState extends State<_OrganizationSelectionSheet
       }
     }
     return discountStr;
+  }
+
+  // Helper method to format distance value (converts meters to km)
+  String _formatDistance(dynamic distance) {
+    try {
+      print('🔍 Package Card: Formatting distance: $distance (type: ${distance.runtimeType})');
+      
+      // Handle null or undefined values
+      if (distance == null) {
+        print('🔍 Package Card: Distance is null, returning "Nearby"');
+        return 'Nearby';
+      }
+      
+      double distanceInMeters;
+      
+      // Handle different data types with explicit type checking
+      if (distance is double) {
+        distanceInMeters = distance;
+        print('🔍 Package Card: Distance is double: $distanceInMeters');
+      } else if (distance is int) {
+        distanceInMeters = distance.toDouble();
+        print('🔍 Package Card: Distance is int, converted to double: $distanceInMeters');
+      } else if (distance is String) {
+        final parsed = double.tryParse(distance);
+        if (parsed == null) {
+          print('🔍 Package Card: Could not parse string distance value: "$distance", returning "Nearby"');
+          return 'Nearby';
+        }
+        distanceInMeters = parsed;
+        print('🔍 Package Card: Distance is string, parsed to double: $distanceInMeters');
+      } else {
+        // For any other type, try to convert safely
+        try {
+          final distanceString = distance.toString();
+          final parsed = double.tryParse(distanceString);
+          if (parsed == null) {
+            print('🔍 Package Card: Could not parse distance value: "$distanceString", returning "Nearby"');
+            return 'Nearby';
+          }
+          distanceInMeters = parsed;
+          print('🔍 Package Card: Distance converted from ${distance.runtimeType} to double: $distanceInMeters');
+        } catch (conversionError) {
+          print('🔍 Package Card: Error converting distance to string: $conversionError, returning "Nearby"');
+          return 'Nearby';
+        }
+      }
+      
+      // Validate the distance value
+      if (distanceInMeters.isNaN || distanceInMeters.isInfinite || distanceInMeters < 0) {
+        print('🔍 Package Card: Invalid distance value: $distanceInMeters, returning "Nearby"');
+        return 'Nearby';
+      }
+      
+      // Convert meters to kilometers
+      final distanceInKm = distanceInMeters / 1000;
+      print('🔍 Package Card: Distance in meters: $distanceInMeters, converted to km: $distanceInKm');
+      
+      String formattedDistance;
+      if (distanceInKm < 1) {
+        // Less than 1 km, show in meters
+        final meters = distanceInMeters.round();
+        formattedDistance = '${meters}m away';
+      } else if (distanceInKm < 10) {
+        // Less than 10 km, show with 1 decimal place
+        formattedDistance = '${distanceInKm.toStringAsFixed(1)}km away';
+      } else {
+        // 10 km or more, show as whole number
+        formattedDistance = '${distanceInKm.round()}km away';
+      }
+      
+      print('🔍 Package Card: Formatted distance: $formattedDistance');
+      return formattedDistance;
+    } catch (e) {
+      print('❌ Package Card: Unexpected error formatting distance: $e');
+      return 'Nearby';
+    }
   }
 
   @override
@@ -1162,8 +1429,20 @@ class _OrganizationSelectionSheetState extends State<_OrganizationSelectionSheet
                           : ListView.builder(
                               controller: scrollController,
                               padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                              itemCount: organizations.length,
+                              itemCount: organizations.length + (hasMoreData ? 1 : 0),
                               itemBuilder: (context, index) {
+                                // Show loading indicator at the bottom
+                                if (index == organizations.length) {
+                                  return Container(
+                                    padding: const EdgeInsets.all(16),
+                                    child: Center(
+                                      child: isLoadingMore 
+                                        ? const CircularProgressIndicator()
+                                        : const SizedBox.shrink(),
+                                    ),
+                                  );
+                                }
+                                
                                 final organization = organizations[index];
                                 final orgId = organization['id'] ?? '';
                                 final isSelected = selectedOrganizationId == orgId;
@@ -1250,7 +1529,7 @@ class _OrganizationSelectionSheetState extends State<_OrganizationSelectionSheet
                                                         ),
                                                         const SizedBox(width: 4),
                                                         Text(
-                                                          organization['distance'] ?? 'Nearby',
+                                                          _formatDistance(organization['distance']),
                                                           style: TextStyle(
                                                             fontSize: 14,
                                                             color: Colors.grey[600],

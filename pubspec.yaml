@@ -41,6 +41,11 @@ dependencies:
   path_provider: ^2.1.1
   url_launcher: ^6.2.4
   geolocator: ^10.1.0
+  payu_checkoutpro_flutter: ^1.3.3
+  crypto: ^3.0.3
+  firebase_core: ^2.24.2
+  firebase_messaging: ^14.7.10
+  flutter_local_notifications: ^16.3.2
 
 dev_dependencies:
   flutter_test:

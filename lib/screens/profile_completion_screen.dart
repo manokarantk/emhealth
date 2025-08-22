@@ -303,7 +303,7 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
         
         // Prepare profile data according to API specification
         final profileData = {
-          'profileimage': 'https://example.com/profile.jpg', // Default placeholder
+          // Remove invalid profile image URL - let backend handle default
           'name': _nameController.text.trim(),
           'dateofbirth': _dob?.toIso8601String().split('T')[0], // Format as YYYY-MM-DD
           'gender': _selectedGender ?? 'male', // Use selected gender or default

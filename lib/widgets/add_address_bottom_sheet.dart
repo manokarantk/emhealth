@@ -7,13 +7,17 @@ class AddAddressBottomSheet {
   static void show({
     required BuildContext context,
     required VoidCallback onAddressAdded,
+    Map<String, dynamic>? addressToEdit,
   }) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (BuildContext context) {
-        return _AddAddressForm(onAddressAdded: onAddressAdded);
+        return _AddAddressForm(
+          onAddressAdded: onAddressAdded,
+          addressToEdit: addressToEdit,
+        );
       },
     );
   }
@@ -21,8 +25,12 @@ class AddAddressBottomSheet {
 
 class _AddAddressForm extends StatefulWidget {
   final VoidCallback onAddressAdded;
+  final Map<String, dynamic>? addressToEdit;
 
-  const _AddAddressForm({required this.onAddressAdded});
+  const _AddAddressForm({
+    required this.onAddressAdded,
+    this.addressToEdit,
+  });
 
   @override
   State<_AddAddressForm> createState() => _AddAddressFormState();
@@ -54,7 +62,31 @@ class _AddAddressFormState extends State<_AddAddressForm> {
     'Other',
   ];
 
+  // Check if in edit mode
+  bool get _isEditMode => widget.addressToEdit != null;
 
+  @override
+  void initState() {
+    super.initState();
+    if (_isEditMode) {
+      _populateEditData();
+    }
+  }
+
+  void _populateEditData() {
+    final address = widget.addressToEdit!;
+    final addressType = address['type'] ?? '';
+    // Only set selected type if it exists in our predefined list
+    _selectedAddressType = _addressTypes.contains(addressType) ? addressType : null;
+    _typeController.text = addressType;
+    _nameController.text = address['name'] ?? address['full_name'] ?? '';
+    _addressLine1Controller.text = address['address_line1'] ?? address['address'] ?? '';
+    _addressLine2Controller.text = address['address_line2'] ?? '';
+    _cityController.text = address['city'] ?? '';
+    _stateController.text = address['state'] ?? '';
+    _pincodeController.text = address['pincode'] ?? '';
+    _isPrimary = address['is_primary'] == true || address['isDefault'] == true;
+  }
 
   @override
   void dispose() {
@@ -74,17 +106,12 @@ class _AddAddressFormState extends State<_AddAddressForm> {
     });
 
     try {
-      print('🌍 Getting current location...');
-      
       final result = await _locationService.getCurrentLocation(context);
-      print('📍 Location result: $result');
 
       if (result['success']) {
         final position = result['data'];
         final latitude = position['latitude'];
         final longitude = position['longitude'];
-        
-        print('📍 Current position: $latitude, $longitude');
 
         // For now, just show the coordinates and let user manually enter address
         ScaffoldMessenger.of(context).showSnackBar(
@@ -98,7 +125,6 @@ class _AddAddressFormState extends State<_AddAddressForm> {
         throw Exception(result['message'] ?? 'Failed to get current location');
       }
     } catch (e) {
-      print('❌ Error getting location: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error getting location: $e'),
@@ -113,9 +139,7 @@ class _AddAddressFormState extends State<_AddAddressForm> {
     });
   }
 
-  Future<void> _addAddress() async {
-    print('🔄 Starting to add address...');
-
+  Future<void> _submitAddress() async {
     // Validation
     if (_selectedAddressType == null || _selectedAddressType!.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -157,25 +181,38 @@ class _AddAddressFormState extends State<_AddAddressForm> {
     });
 
     try {
-      print('📋 Address data: type="$_selectedAddressType", address="${_addressLine1Controller.text.trim()}", city="${_cityController.text.trim()}", state="${_stateController.text.trim()}", pincode="${_pincodeController.text.trim()}"');
-
-      final result = await _apiService.addAddress(
-        type: _selectedAddressType!,
-        name: _nameController.text.trim().isNotEmpty ? _nameController.text.trim() : null,
-        addressLine1: _addressLine1Controller.text.trim(),
-        addressLine2: _addressLine2Controller.text.trim().isNotEmpty ? _addressLine2Controller.text.trim() : null,
-        city: _cityController.text.trim(),
-        state: _stateController.text.trim(),
-        pincode: _pincodeController.text.trim(),
-        isPrimary: _isPrimary,
-        context: context,
-      );
-
-      print('📊 API Response: $result');
+      final Map<String, dynamic> result;
+      
+      if (_isEditMode) {
+        // Update existing address
+        result = await _apiService.updateAddress(
+          addressId: widget.addressToEdit!['id'],
+          type: _selectedAddressType!,
+          name: _nameController.text.trim().isNotEmpty ? _nameController.text.trim() : null,
+          addressLine1: _addressLine1Controller.text.trim(),
+          addressLine2: _addressLine2Controller.text.trim().isNotEmpty ? _addressLine2Controller.text.trim() : null,
+          city: _cityController.text.trim(),
+          state: _stateController.text.trim(),
+          pincode: _pincodeController.text.trim(),
+          isPrimary: _isPrimary,
+          context: context,
+        );
+      } else {
+        // Add new address
+        result = await _apiService.addAddress(
+          type: _selectedAddressType!,
+          name: _nameController.text.trim().isNotEmpty ? _nameController.text.trim() : null,
+          addressLine1: _addressLine1Controller.text.trim(),
+          addressLine2: _addressLine2Controller.text.trim().isNotEmpty ? _addressLine2Controller.text.trim() : null,
+          city: _cityController.text.trim(),
+          state: _stateController.text.trim(),
+          pincode: _pincodeController.text.trim(),
+          isPrimary: _isPrimary,
+          context: context,
+        );
+      }
 
       if (result['success'] == true) {
-        print('✅ Address added successfully');
-        
         // Store context before popping
         final scaffoldMessenger = ScaffoldMessenger.of(context);
         final navigator = Navigator.of(context);
@@ -189,25 +226,23 @@ class _AddAddressFormState extends State<_AddAddressForm> {
         // Show success message after a small delay to ensure context is valid
         Future.delayed(const Duration(milliseconds: 100), () {
           scaffoldMessenger.showSnackBar(
-            const SnackBar(
-              content: Text('Address added successfully!'),
+            SnackBar(
+              content: Text(_isEditMode ? 'Address updated successfully!' : 'Address added successfully!'),
               backgroundColor: Colors.green,
-              duration: Duration(seconds: 3),
+              duration: const Duration(seconds: 3),
             ),
           );
         });
       } else {
-        print('❌ Failed to add address: ${result['message']}');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(result['message'] ?? 'Failed to add address'),
+            content: Text(result['message'] ?? (_isEditMode ? 'Failed to update address' : 'Failed to add address')),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 4),
           ),
         );
       }
     } catch (e) {
-      print('💥 Exception during add address: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error: $e'),
@@ -253,9 +288,9 @@ class _AddAddressFormState extends State<_AddAddressForm> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'Add New Address',
-                  style: TextStyle(
+                Text(
+                  _isEditMode ? 'Edit Address' : 'Add New Address',
+                  style: const TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
                   ),
@@ -274,7 +309,7 @@ class _AddAddressFormState extends State<_AddAddressForm> {
               child: Column(
                 children: [
                   // Current location button
-                  Container(
+                  SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
                       onPressed: _isLoadingLocation ? null : _getCurrentLocation,
@@ -411,59 +446,53 @@ class _AddAddressFormState extends State<_AddAddressForm> {
                   ),
                   const SizedBox(height: 20),
                   
-                  // City and State Row
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: _cityController,
-                          decoration: InputDecoration(
-                            labelText: 'City',
-                            prefixIcon: const Icon(Icons.location_city, color: AppColors.primaryBlue),
-                            filled: true,
-                            fillColor: Colors.white,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(16),
-                              borderSide: const BorderSide(color: Colors.grey, width: 1),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(16),
-                              borderSide: const BorderSide(color: Colors.grey, width: 1),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(16),
-                              borderSide: const BorderSide(color: AppColors.primaryBlue, width: 2),
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
-                          ),
-                        ),
+                  // City
+                  TextFormField(
+                    controller: _cityController,
+                    decoration: InputDecoration(
+                      labelText: 'City',
+                      prefixIcon: const Icon(Icons.location_city, color: AppColors.primaryBlue),
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(color: Colors.grey, width: 1),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextFormField(
-                          controller: _stateController,
-                          decoration: InputDecoration(
-                            labelText: 'State',
-                            prefixIcon: const Icon(Icons.map, color: AppColors.primaryBlue),
-                            filled: true,
-                            fillColor: Colors.white,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(16),
-                              borderSide: const BorderSide(color: Colors.grey, width: 1),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(16),
-                              borderSide: const BorderSide(color: Colors.grey, width: 1),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(16),
-                              borderSide: const BorderSide(color: AppColors.primaryBlue, width: 2),
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
-                          ),
-                        ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(color: Colors.grey, width: 1),
                       ),
-                    ],
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(color: AppColors.primaryBlue, width: 2),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  
+                  // State
+                  TextFormField(
+                    controller: _stateController,
+                    decoration: InputDecoration(
+                      labelText: 'State',
+                      prefixIcon: const Icon(Icons.map, color: AppColors.primaryBlue),
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(color: Colors.grey, width: 1),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(color: Colors.grey, width: 1),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(color: AppColors.primaryBlue, width: 2),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
+                    ),
                   ),
                   const SizedBox(height: 20),
                   
@@ -544,7 +573,7 @@ class _AddAddressFormState extends State<_AddAddressForm> {
                 const SizedBox(width: 16),
                 Expanded(
                   child: ElevatedButton(
-                    onPressed: _isAddingAddress ? null : _addAddress,
+                    onPressed: _isAddingAddress ? null : _submitAddress,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primaryBlue,
                       foregroundColor: Colors.white,
@@ -567,7 +596,7 @@ class _AddAddressFormState extends State<_AddAddressForm> {
                               ),
                               const SizedBox(width: 8),
                               Text(
-                                'Adding...',
+                                _isEditMode ? 'Updating...' : 'Adding...',
                                 style: TextStyle(
                                   color: Colors.white.withOpacity(0.8),
                                   fontSize: 14,
@@ -575,9 +604,9 @@ class _AddAddressFormState extends State<_AddAddressForm> {
                               ),
                             ],
                           )
-                        : const Text(
-                            'Add Address',
-                            style: TextStyle(
+                        : Text(
+                            _isEditMode ? 'Update Address' : 'Add Address',
+                            style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
                             ),
