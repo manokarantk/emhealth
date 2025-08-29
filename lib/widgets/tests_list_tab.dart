@@ -235,7 +235,7 @@ class _TestsListTabState extends State<TestsListTab> {
     }
   }
 
-  Future<void> _addToCartApi(String testName, String labTestId, double price) async {
+  Future<void> _addToCartApi(String testName, String labTestId, double originalPrice, {double? discountedPrice, double? discountedValue, String? discountType}) async {
     // Set loading state for this specific test using test ID
     setState(() {
       loadingStates[labTestId] = true;
@@ -244,9 +244,12 @@ class _TestsListTabState extends State<TestsListTab> {
     try {
       final apiService = ApiService();
       final result = await apiService.addToCart(
-        price: price,
+        price: originalPrice,
         testName: testName,
         labTestId: labTestId,
+        discountedPrice: discountedPrice,
+        discountedValue: discountedValue,
+        discountType: discountType,
       );
       
       if (result['success']) {
@@ -438,13 +441,13 @@ class _TestsListTabState extends State<TestsListTab> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryBlue),
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
               ),
               SizedBox(height: 16),
               Text(
                 'Searching...',
                 style: TextStyle(
-                  color: Colors.grey,
+                  color: Colors.white,
                   fontSize: 16,
                 ),
               ),
@@ -492,13 +495,14 @@ class _TestsListTabState extends State<TestsListTab> {
         itemBuilder: (context, index) {
           final test = widget.searchResults![index];
           final testId = test['id']?.toString() ?? '';
-          final isInCart = widget.cartItems.contains(testId);
+          final testName = test['testname'] ?? test['name'] ?? 'Test';
+          final isInCart = widget.cartItems.contains(testName);
           
           return TestCard(
             test: test,
             isInCart: isInCart,
-            onAddToCart: () async => await widget.onAddToCart(testId),
-            onRemoveFromCart: () async => await widget.onRemoveFromCart(testId),
+            onAddToCart: () async => await widget.onAddToCart(testName),
+            onRemoveFromCart: () async => await widget.onRemoveFromCart(testName),
             onAddToCartApi: _addToCartApi,
             onRemoveFromCartApi: _removeFromCartApi,
             isLoading: loadingStates[testId] ?? false,
@@ -511,7 +515,7 @@ class _TestsListTabState extends State<TestsListTab> {
     if (isLoading) {
       return const Center(
         child: CircularProgressIndicator(
-          valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryBlue),
+          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
         ),
       );
     }
@@ -547,7 +551,7 @@ class _TestsListTabState extends State<TestsListTab> {
                   padding: const EdgeInsets.all(16),
                   child: const Center(
                     child: CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryBlue),
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                     ),
                   ),
                 );
@@ -555,13 +559,14 @@ class _TestsListTabState extends State<TestsListTab> {
               
               final test = tests[index];
               final testId = test['id']?.toString() ?? '';
-              final isInCart = widget.cartItems.contains(testId);
+              final testName = test['testname'] ?? test['name'] ?? 'Test';
+              final isInCart = widget.cartItems.contains(testName);
               
               return TestCard(
                 test: test,
                 isInCart: isInCart,
-                onAddToCart: () async => await widget.onAddToCart(testId),
-                onRemoveFromCart: () async => await widget.onRemoveFromCart(testId),
+                onAddToCart: () async => await widget.onAddToCart(testName),
+                onRemoveFromCart: () async => await widget.onRemoveFromCart(testName),
                 onAddToCartApi: _addToCartApi,
                 onRemoveFromCartApi: _removeFromCartApi,
                 isLoading: loadingStates[testId] ?? false,

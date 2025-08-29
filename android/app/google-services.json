@@ -1,21 +1,21 @@
 {
   "project_info": {
-    "project_number": "YOUR_PROJECT_NUMBER",
-    "project_id": "emhealth-app",
-    "storage_bucket": "emhealth-app.appspot.com"
+    "project_number": "1022830934583",
+    "project_id": "emhealth-ee99c",
+    "storage_bucket": "emhealth-ee99c.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "YOUR_APP_ID",
+        "mobilesdk_app_id": "1:1022830934583:android:0499c17133eff852f11db2",
         "android_client_info": {
-          "package_name": "com.example.emhealth_app"
+          "package_name": "com.app.emhealth_app"
         }
       },
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "YOUR_API_KEY"
+          "current_key": "AIzaSyC41OJ2fFIm_apGJezWXH1DpL3gXs4isSk"
         }
       ],
       "services": {

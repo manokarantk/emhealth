@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 import 'screens/splash_screen.dart';
 import 'screens/intro_screen.dart';
 import 'screens/login_screen.dart';
@@ -8,19 +10,17 @@ import 'screens/profile_completion_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/landing_page.dart';
 import 'theme/app_theme.dart';
-import 'services/notification_service.dart';
 import 'widgets/notification_test_widget.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await SharedPreferences.getInstance();
   
-  // Initialize Firebase notifications
-  try {
-    await NotificationService().initialize();
-  } catch (e) {
-    print('❌ Failed to initialize notifications: $e');
-  }
+  // Initialize Firebase
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+  
+  await SharedPreferences.getInstance();
   
   runApp(const MyApp());
 }
@@ -32,7 +32,11 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'EmHealth',
-      theme: AppTheme.lightTheme,
+      theme: AppTheme.lightTheme.copyWith(
+        snackBarTheme: const SnackBarThemeData(
+          behavior: SnackBarBehavior.floating,
+        ),
+      ),
       debugShowCheckedModeBanner: false,
       initialRoute: '/',
       routes: {

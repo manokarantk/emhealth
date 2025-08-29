@@ -85,10 +85,20 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   // Booking related variables
   bool isBooking = false;
   String? bookingError;
+  
+  // Fresh cart data for dynamic price calculation
+  Map<String, dynamic>? _freshCartData;
+  
+  // Mapping from test/package IDs to cart item IDs
+  Map<String, String> _testIdToCartItemId = {};
+  Map<String, String> _packageIdToCartItemId = {};
 
   @override
   void initState() {
     super.initState();
+    
+    // Initialize fresh cart data
+    _freshCartData = widget.cartData;
     
     // Initialize cart items from the initial cart data
     _updateCartFromFreshData(widget.cartData);
@@ -343,54 +353,33 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   // Helper method to get discounted test price (always shows discounted price by default)
   double _getTestDiscountedPrice(String testName) {
-    if (widget.cartData['items'] != null) {
-      final items = List<Map<String, dynamic>>.from(widget.cartData['items']);
-      for (final item in items) {
+    // Use fresh cart data if available, otherwise fallback to widget cart data
+    final cartData = _freshCartData ?? widget.cartData;
+    
+    if (cartData['items'] != null) {
+      final items = List<Map<String, dynamic>>.from(cartData['items']);
+      // Filter items by current organization ID
+      final filteredItems = items.where((item) {
+        final itemOrgId = item['lab_id']?.toString() ?? item['organization_id']?.toString() ?? '';
+        final currentOrgId = widget.organizationId;
+        return itemOrgId == currentOrgId;
+      }).toList();
+      
+      for (final item in filteredItems) {
         final itemName = item['test_name']?.toString() ?? '';
         if (itemName == testName || itemName.toLowerCase() == testName.toLowerCase()) {
           print('🔍 Found matching item for discount calculation: $item');
           
-          // Always try to get discounted price first (by default)
-          // Try to get discounted price from different possible fields
-          if (item['discounted_amount'] != null) {
-            print('🔍 Using discounted_price field: ${item['discounted_price']}');
-            if (item['discounted_amount'] is String) {
-              return double.tryParse(item['discounted_amount']) ?? _getTestPrice(testName);
-            } else if (item['discounted_amount'] is num) {
-              return item['discounted_amount'].toDouble();
-            }
-          }
-          if (item['final_price'] != null) {
-            print('🔍 Using final_price field: ${item['final_price']}');
-            if (item['final_price'] is String) {
-              return double.tryParse(item['final_price']) ?? _getTestPrice(testName);
-            } else if (item['final_price'] is num) {
-              return item['final_price'].toDouble();
-            }
-          }
-          
-          // Always calculate discounted price from original price and discount percentage
-          final originalPrice = _getTestPrice(testName);
-          if (originalPrice > 0) {
-            final discountText = widget.testDiscounts[testName] ?? '';
-            if (discountText.isNotEmpty && discountText.contains('%')) {
-              // Extract discount percentage
-              final percentMatch = RegExp(r'(\d+)%').firstMatch(discountText);
-              if (percentMatch != null) {
-                final discountPercent = int.tryParse(percentMatch.group(1) ?? '0') ?? 0;
-                final discountAmount = (originalPrice * discountPercent) / 100;
-                final discountedPrice = originalPrice - discountAmount;
-                print('🔍 Calculated discounted price: $originalPrice - $discountAmount = $discountedPrice');
-                return discountedPrice;
-              }
-            }
-          }
-          break;
+          // Use the same logic as _calculateTotalDiscountedPrice
+          // Use discounted_amount if available, otherwise fallback to price
+          final discountedPrice = double.tryParse(item['discounted_amount']?.toString() ?? item['price']?.toString() ?? '0') ?? 0.0;
+          print('🔍 Using discounted price from cart data: $discountedPrice');
+          return discountedPrice;
         }
       }
     }
     
-    // If couldn't find discounted price, return original price
+    // If couldn't find item in cart data, return original price
     return _getTestPrice(testName);
   }
 
@@ -398,9 +387,19 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   double _getTestPrice(String testName) {
     print('🔍 _getTestPrice called for: "$testName"');
     
-    if (widget.cartData['items'] != null) {
-      final items = List<Map<String, dynamic>>.from(widget.cartData['items']);
-      for (final item in items) {
+    // Use fresh cart data if available, otherwise fallback to widget cart data
+    final cartData = _freshCartData ?? widget.cartData;
+    
+    if (cartData['items'] != null) {
+      final items = List<Map<String, dynamic>>.from(cartData['items']);
+      // Filter items by current organization ID
+      final filteredItems = items.where((item) {
+        final itemOrgId = item['lab_id']?.toString() ?? item['organization_id']?.toString() ?? '';
+        final currentOrgId = widget.organizationId;
+        return itemOrgId == currentOrgId;
+      }).toList();
+      
+      for (final item in filteredItems) {
         final itemName = item['test_name']?.toString() ?? '';
         if (itemName == testName || itemName.toLowerCase() == testName.toLowerCase()) {
           print('🔍 Found matching item in cart data: $item');
@@ -445,9 +444,19 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   double _getPackagePrice(String packageName) {
     print('🔍 _getPackagePrice called for: "$packageName"');
     
-    if (widget.cartData['items'] != null) {
-      final items = List<Map<String, dynamic>>.from(widget.cartData['items']);
-      for (final item in items) {
+    // Use fresh cart data if available, otherwise fallback to widget cart data
+    final cartData = _freshCartData ?? widget.cartData;
+    
+    if (cartData['items'] != null) {
+      final items = List<Map<String, dynamic>>.from(cartData['items']);
+      // Filter items by current organization ID
+      final filteredItems = items.where((item) {
+        final itemOrgId = item['lab_id']?.toString() ?? item['organization_id']?.toString() ?? '';
+        final currentOrgId = widget.organizationId;
+        return itemOrgId == currentOrgId;
+      }).toList();
+      
+      for (final item in filteredItems) {
         final itemName = item['test_name']?.toString() ?? '';
         if (itemName == packageName || itemName.toLowerCase() == packageName.toLowerCase()) {
           print('🔍 Found matching package item in cart data: $item');
@@ -492,51 +501,28 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   double _getPackageDiscountedPrice(String packageName) {
     print('🔍 _getPackageDiscountedPrice called for: "$packageName"');
     
-    if (widget.cartData['items'] != null) {
-      final items = List<Map<String, dynamic>>.from(widget.cartData['items']);
-      for (final item in items) {
+    // Use fresh cart data if available, otherwise fallback to widget cart data
+    final cartData = _freshCartData ?? widget.cartData;
+    
+    if (cartData['items'] != null) {
+      final items = List<Map<String, dynamic>>.from(cartData['items']);
+      // Filter items by current organization ID
+      final filteredItems = items.where((item) {
+        final itemOrgId = item['lab_id']?.toString() ?? item['organization_id']?.toString() ?? '';
+        final currentOrgId = widget.organizationId;
+        return itemOrgId == currentOrgId;
+      }).toList();
+      
+      for (final item in filteredItems) {
         final itemName = item['test_name']?.toString() ?? '';
         if (itemName == packageName || itemName.toLowerCase() == packageName.toLowerCase()) {
           print('🔍 Found matching package item in cart data: $item');
           
-          // Try to get discounted price from different possible fields for packages
-          if (item['discounted_amount'] != null) {
-            print('🔍 Found discounted_amount field: ${item['discounted_amount']} (type: ${item['discounted_amount'].runtimeType})');
-            if (item['discounted_amount'] is String) {
-              final price = double.tryParse(item['discounted_amount']) ?? _getPackagePrice(packageName);
-              print('🔍 Parsed string discounted_amount: $price');
-              return price;
-            } else if (item['discounted_amount'] is num) {
-              final price = item['discounted_amount'].toDouble();
-              print('🔍 Converted num discounted_amount: $price');
-              return price;
-            }
-          }
-          if (item['final_price'] != null) {
-            print('🔍 Found final_price field: ${item['final_price']} (type: ${item['final_price'].runtimeType})');
-            if (item['final_price'] is String) {
-              final price = double.tryParse(item['final_price']) ?? _getPackagePrice(packageName);
-              print('🔍 Parsed string final_price: $price');
-              return price;
-            } else if (item['final_price'] is num) {
-              final price = item['final_price'].toDouble();
-              print('🔍 Converted num final_price: $price');
-              return price;
-            }
-          }
-          if (item['discountedprice'] != null) {
-            print('🔍 Found discountedprice field: ${item['discountedprice']} (type: ${item['discountedprice'].runtimeType})');
-            if (item['discountedprice'] is String) {
-              final price = double.tryParse(item['discountedprice']) ?? _getPackagePrice(packageName);
-              print('🔍 Parsed string discountedprice: $price');
-              return price;
-            } else if (item['discountedprice'] is num) {
-              final price = item['discountedprice'].toDouble();
-              print('🔍 Converted num discountedprice: $price');
-              return price;
-            }
-          }
-          break;
+          // Use the same logic as _calculateTotalDiscountedPrice
+          // Use discounted_amount if available, otherwise fallback to price
+          final discountedPrice = double.tryParse(item['discounted_amount']?.toString() ?? item['price']?.toString() ?? '0') ?? 0.0;
+          print('🔍 Using discounted price from cart data: $discountedPrice');
+          return discountedPrice;
         }
       }
     }
@@ -565,88 +551,90 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
-  Future<void> _removeFromCart(String testId) async {
-    print('🛒 Removing test ID: $testId from cart...');
+  Future<void> _removeFromCart(String itemId, [bool isPackage = false]) async {
+    print('🛒 Removing ${isPackage ? 'package' : 'test'} ID: $itemId from cart...');
     print('🛒 Current selectedTests: $selectedTests');
-    print('🛒 Cart data available: ${widget.cartData != null}');
+    print('🛒 Current selectedPackages: $selectedPackages');
+    print('🛒 Test ID to Cart Item ID mapping: $_testIdToCartItemId');
+    print('🛒 Package ID to Cart Item ID mapping: $_packageIdToCartItemId');
+    
     try {
-      // Find the cart item ID for this test ID
+      // Get the cart item ID from the appropriate mapping
       String? cartItemId;
-      
-      print('🔍 Looking for cart item with test ID: $testId');
-      print('🔍 Available cart data keys: ${widget.cartData?.keys}');
-      
-      // The main items array should contain all cart items with proper structure
-      if (widget.cartData != null && widget.cartData!['items'] != null) {
-        final items = List<Map<String, dynamic>>.from(widget.cartData!['items']);
-        print('🔍 Found ${items.length} items in cart data');
-        
-        for (final item in items) {
-          final itemTestId = item['lab_test_id']?.toString() ?? item['lab_package_id']?.toString() ?? item['id']?.toString();
-          print('🔍 Checking item test ID: $itemTestId against target: $testId');
-          
-          if (itemTestId == testId) {
-            cartItemId = item['id']?.toString() ?? item['cart_id']?.toString();
-            print('✅ Found matching item with test ID: $itemTestId and cart ID: $cartItemId');
-            break;
-          }
-        }
+      if (isPackage) {
+        cartItemId = _packageIdToCartItemId[itemId];
       } else {
-        print('❌ No items array found in cart data');
-        print('❌ Cart data structure: ${widget.cartData}');
+        cartItemId = _testIdToCartItemId[itemId];
       }
+      
+      print('🔍 Looking for cart item ID for ${isPackage ? 'package' : 'test'} ID: $itemId');
+      print('🔍 Found cart item ID from mapping: $cartItemId');
           
       if (cartItemId != null && cartItemId.isNotEmpty) {
-        print('🛒 Found cart item ID: $cartItemId for test ID: $testId');
+        print('🛒 Found cart item ID: $cartItemId for ${isPackage ? 'package' : 'test'} ID: $itemId');
         final result = await _apiService.removeFromCart(cartItemId);
         if (result['success']) {
           print('✅ Item removed from cart successfully');
           
-          // Update local state to remove the test
+          // Update local state to remove the item
           setState(() {
-            selectedTests.remove(testId);
+            if (isPackage) {
+              selectedPackages.remove(itemId);
+              _packageIdToCartItemId.remove(itemId);
+            } else {
+              selectedTests.remove(itemId);
+              _testIdToCartItemId.remove(itemId);
+            }
           });
           
           // Call parent callback if available
           if (widget.onRemoveFromCart != null) {
-            print('📞 Calling parent callback for removed test ID: $testId');
-            widget.onRemoveFromCart!(testId);
+            print('📞 Calling parent callback for removed ${isPackage ? 'package' : 'test'} ID: $itemId');
+            widget.onRemoveFromCart!(itemId);
           }
           
           // Show success message
-          final testName = testIdToName[testId] ?? testId;
+          final itemName = isPackage 
+              ? (packageIdToName[itemId] ?? itemId)
+              : (testIdToName[itemId] ?? itemId);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('$testName removed from cart'),
+              content: Text('$itemName removed from cart'),
               backgroundColor: Colors.green,
             ),
           );
         } else {
           print('❌ Failed to remove item from cart: ${result['message']}');
-          final testName = testIdToName[testId] ?? testId;
+          final itemName = isPackage 
+              ? (packageIdToName[itemId] ?? itemId)
+              : (testIdToName[itemId] ?? itemId);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Failed to remove $testName from cart'),
+              content: Text('Failed to remove $itemName from cart'),
               backgroundColor: Colors.red,
             ),
           );
         }
       } else {
-        print('❌ Could not find cart item ID for test ID: $testId');
-        final testName = testIdToName[testId] ?? testId;
+        print('❌ Could not find cart item ID for ${isPackage ? 'package' : 'test'} ID: $itemId');
+        final itemName = isPackage 
+            ? (packageIdToName[itemId] ?? itemId)
+            : (testIdToName[itemId] ?? itemId);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Could not remove $testName from cart'),
+            content: Text('Could not remove $itemName from cart'),
             backgroundColor: Colors.red,
           ),
         );
       }
     } catch (e) {
       print('❌ Error removing item from cart: $e');
-      final testName = testIdToName[testId] ?? testId;
+      final itemName = isPackage 
+          ? (packageIdToName[itemId] ?? itemId)
+          : (testIdToName[itemId] ?? itemId);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error removing $testName from cart'),
+          content: Text('Error removing $itemName from cart'),
           backgroundColor: Colors.red,
         ),
       );
@@ -701,7 +689,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       
       print('📋 Cart Data: ${widget.cartData}');
       print('📋 Selected Tests: $selectedTests');
+      print('📋 Selected Packages: $selectedPackages');
       print('📋 Test ID to Name Mapping: $testIdToName');
+      print('📋 Package ID to Name Mapping: $packageIdToName');
       
       // Debug cart items structure
       if (widget.cartData['items'] != null) {
@@ -718,11 +708,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         }
       }
       
-      // Extract test IDs from selected tests (now contains IDs directly)
+      // Extract test IDs and package IDs from selected items
       final List<String> labTests = [];
       final List<String> packages = [];
       
-      // Since selectedTests now contains IDs, we need to categorize them as tests or packages
+      // Process selected tests (may contain both test IDs and package IDs)
       for (final testId in selectedTests) {
         print('📋 Processing test ID: $testId');
         
@@ -797,6 +787,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         }
       }
       
+      // Process selected packages (these are definitely packages)
+      for (final packageId in selectedPackages) {
+        print('📋 Processing package ID: $packageId');
+        packages.add(packageId);
+        print('📋 Added package ID: $packageId');
+      }
+      
       // Get patient ID (if it's not "Myself", use the dependent ID)
       String patientId = '550e8400-e29b-41d4-a716-446655440006'; // Default to "Myself"
       if (selectedPatient != 'Myself') {
@@ -820,9 +817,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       // Determine payment mode using helper function
       String paymentMode = _getApiPaymentMode(selectedPaymentMethod);
       
-      // Override with wallet if wallet covers full amount
+      // Handle combination payments
       if (useWalletBalance && amountAfterWallet <= 0) {
+        // Full wallet payment
         paymentMode = 'WALLET';
+      } else if (useWalletBalance && amountAfterWallet > 0) {
+        // Partial wallet payment - use the selected payment method
+        paymentMode = _getApiPaymentMode(selectedPaymentMethod);
       }
       
       print('💳 Payment method conversion: "$selectedPaymentMethod" → "$paymentMode"');
@@ -1329,13 +1330,66 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   double get totalOriginalPrice {
-    // Use lab prices instead of local test prices
-    return widget.labOriginalPrice;
+    // Calculate dynamically from current cart items
+    return _calculateTotalOriginalPrice();
   }
 
   double get totalDiscountedPrice {
-    // Use lab discounted price instead of local test prices
-    return widget.labDiscountedPrice;
+    // Calculate dynamically from current cart items
+    return _calculateTotalDiscountedPrice();
+  }
+
+  // Calculate total original price from current cart items
+  double _calculateTotalOriginalPrice() {
+    double total = 0.0;
+    
+    // Use fresh cart data if available, otherwise fallback to widget cart data
+    final cartData = _freshCartData ?? widget.cartData;
+    
+    // Get prices from cart data filtered by current organization
+    if (cartData['items'] != null) {
+      final items = List<Map<String, dynamic>>.from(cartData['items']);
+      final filteredItems = items.where((item) {
+        final itemOrgId = item['lab_id']?.toString() ?? item['organization_id']?.toString() ?? '';
+        final currentOrgId = widget.organizationId;
+        return itemOrgId == currentOrgId;
+      }).toList();
+      
+      for (final item in filteredItems) {
+        final basePrice = double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
+        total += basePrice;
+      }
+    }
+    
+    print('🔍 _calculateTotalOriginalPrice: ₹$total (using ${_freshCartData != null ? 'fresh' : 'widget'} cart data, filtered for org: ${widget.organizationId})');
+    return total;
+  }
+
+  // Calculate total discounted price from current cart items
+  double _calculateTotalDiscountedPrice() {
+    double total = 0.0;
+    
+    // Use fresh cart data if available, otherwise fallback to widget cart data
+    final cartData = _freshCartData ?? widget.cartData;
+    
+    // Get discounted prices from cart data filtered by current organization
+    if (cartData['items'] != null) {
+      final items = List<Map<String, dynamic>>.from(cartData['items']);
+      final filteredItems = items.where((item) {
+        final itemOrgId = item['lab_id']?.toString() ?? item['organization_id']?.toString() ?? '';
+        final currentOrgId = widget.organizationId;
+        return itemOrgId == currentOrgId;
+      }).toList();
+      
+      for (final item in filteredItems) {
+        // Use discounted_amount if available, otherwise fallback to price
+        final discountedPrice = double.tryParse(item['discounted_amount']?.toString() ?? item['price']?.toString() ?? '0') ?? 0.0;
+        total += discountedPrice;
+      }
+    }
+    
+    print('🔍 _calculateTotalDiscountedPrice: ₹$total (using ${_freshCartData != null ? 'fresh' : 'widget'} cart data, filtered for org: ${widget.organizationId})');
+    return total;
   }
 
   // Get the actual payable amount based on payment method
@@ -1370,14 +1424,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   // Check if discount should be applied
   bool get shouldApplyDiscount {
-    // Check if user is paying full amount via online payment or wallet
-    bool isFullPaymentOnline = selectedPaymentMethod == 'Online Payment';
-    bool isFullPaymentWallet = useWalletBalance && walletCoversFullAmount;
+    // Apply discount for online payments or wallet payments (consistent with multi-lab checkout)
+    final shouldApply = selectedPaymentMethod == 'Online Payment' || 
+                       (useWalletBalance && selectedPaymentMethod != 'Pay at Collection');
     
-    final shouldApply = (isFullPaymentOnline || isFullPaymentWallet) &&
-                        selectedPaymentMethod != 'Pay at Collection';
-    
-    print('🔍 shouldApplyDiscount: $shouldApply (payment: $selectedPaymentMethod, wallet: $useWalletBalance, walletCoversFullAmount: $walletCoversFullAmount)');
+    print('🔍 shouldApplyDiscount: $shouldApply (payment: $selectedPaymentMethod, wallet: $useWalletBalance)');
     return shouldApply;
   }
 
@@ -1390,7 +1441,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   // Check if payment methods should be disabled (when wallet covers full amount)
   bool get shouldDisablePaymentMethods {
-    return walletCoversFullAmount && useWalletBalance;
+    // Allow partial wallet payments - don't disable payment methods
+    return false;
   }
 
   void _showAddMoreTestsBottomSheet() {
@@ -2465,6 +2517,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           labName: widget.selectedLab,
           cartItems: selectedTests.union(selectedPackages),
           onItemAdded: _onItemAddedToCart,
+          onRemoveFromCart: _removeFromCart,
         );
       },
     );
@@ -2488,9 +2541,25 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         final freshCartData = cartResult['data'];
         print('✅ Fresh cart data received: $freshCartData');
         
+        // Debug: Print all cart items to understand the structure
+        if (freshCartData['items'] != null) {
+          final items = List<Map<String, dynamic>>.from(freshCartData['items']);
+          print('🔍 Cart items structure:');
+          for (int i = 0; i < items.length; i++) {
+            final item = items[i];
+            print('🔍 Item $i: $item');
+            print('🔍 Item $i - lab_test_id: ${item['lab_test_id']}');
+            print('🔍 Item $i - lab_package_id: ${item['lab_package_id']}');
+            print('🔍 Item $i - test_name: ${item['test_name']}');
+            print('🔍 Item $i - id: ${item['id']}');
+          }
+        }
+        
         // Update cart data - we need to handle this differently since cartData is final
         // We'll update the local state instead
         setState(() {
+          // Store fresh cart data for price calculations
+          _freshCartData = freshCartData;
           // Update the cart items based on fresh data
           _updateCartFromFreshData(freshCartData);
         });
@@ -2502,33 +2571,55 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   // Update cart from fresh data
   void _updateCartFromFreshData(Map<String, dynamic> freshCartData) {
-    // Clear existing items
+    // Clear existing items and mappings
     selectedTests.clear();
     selectedPackages.clear();
     testIdToName.clear();
     packageIdToName.clear();
+    _testIdToCartItemId.clear();
+    _packageIdToCartItemId.clear();
     
-    // Create mapping from test IDs and package IDs to names using fresh cart data
+    // Filter items by current organization ID for single lab checkout
     if (freshCartData['items'] != null) {
       final items = List<Map<String, dynamic>>.from(freshCartData['items']);
-      for (final item in items) {
+      final filteredItems = items.where((item) {
+        final itemOrgId = item['lab_id']?.toString() ?? item['organization_id']?.toString() ?? '';
+        final currentOrgId = widget.organizationId;
+        return itemOrgId == currentOrgId;
+      }).toList();
+      
+      print('🔄 Filtering cart items for organization: ${widget.organizationId}');
+      print('🔄 Total cart items: ${items.length}, Filtered items: ${filteredItems.length}');
+      
+      // Create mapping from test IDs and package IDs to names using filtered cart data
+      // Also create mapping from test/package IDs to cart item IDs
+      for (final item in filteredItems) {
         final testId = item['lab_test_id']?.toString();
         final packageId = item['lab_package_id']?.toString();
         final itemName = item['test_name']?.toString() ?? '';
+        final cartItemId = item['id']?.toString() ?? '';
+        
+        print('🔄 Processing cart item: $item');
+        print('🔄 Test ID: $testId, Package ID: $packageId, Cart Item ID: $cartItemId');
         
         if (testId != null && testId.isNotEmpty && itemName.isNotEmpty) {
           testIdToName[testId] = itemName;
+          if (cartItemId.isNotEmpty) {
+            _testIdToCartItemId[testId] = cartItemId;
+            print('🔄 Mapped test ID: $testId -> cart item ID: $cartItemId');
+          }
         }
         if (packageId != null && packageId.isNotEmpty && itemName.isNotEmpty) {
           packageIdToName[packageId] = itemName;
+          if (cartItemId.isNotEmpty) {
+            _packageIdToCartItemId[packageId] = cartItemId;
+            print('🔄 Mapped package ID: $packageId -> cart item ID: $cartItemId');
+          }
         }
       }
-    }
-    
-    // Separate tests and packages from fresh cart items
-    if (freshCartData['items'] != null) {
-      final items = List<Map<String, dynamic>>.from(freshCartData['items']);
-      for (final item in items) {
+      
+      // Separate tests and packages from filtered cart items
+      for (final item in filteredItems) {
         final testId = item['lab_test_id']?.toString();
         final packageId = item['lab_package_id']?.toString();
         
@@ -2544,6 +2635,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     print('🔄 Updated local state - Tests: $selectedTests, Packages: $selectedPackages');
     print('🔄 Test ID to Name mapping: $testIdToName');
     print('🔄 Package ID to Name mapping: $packageIdToName');
+    print('🔄 Test ID to Cart Item ID mapping: $_testIdToCartItemId');
+    print('🔄 Package ID to Cart Item ID mapping: $_packageIdToCartItemId');
   }
 
 
@@ -2919,18 +3012,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F9FB),
+      backgroundColor: AppColors.primaryBlue,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.primaryBlue,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.black),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: const Text(
           'Checkout',
           style: TextStyle(
-            color: Colors.black,
+            color: Colors.white,
             fontWeight: FontWeight.bold,
             fontSize: 20,
           ),
@@ -3052,7 +3145,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
-                      color: Colors.black87,
+                      color: Colors.white,
                     ),
                   ),
                   GestureDetector(
@@ -3060,10 +3153,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
                       decoration: BoxDecoration(
-                        color: AppColors.primaryBlue.withOpacity(0.1),
+                        color: Colors.white,
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
-                          color: AppColors.primaryBlue.withOpacity(0.3),
+                          color: AppColors.primaryBlue,
                           width: 1,
                         ),
                       ),
@@ -3175,7 +3268,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
-                      color: Colors.black87,
+                      color: Colors.white,
                     ),
                   ),
                   GestureDetector(
@@ -3183,10 +3276,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
                       decoration: BoxDecoration(
-                        color: AppColors.primaryBlue.withOpacity(0.1),
+                        color: Colors.white,
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
-                          color: AppColors.primaryBlue.withOpacity(0.3),
+                          color: AppColors.primaryBlue,
                           width: 1,
                         ),
                       ),
@@ -3668,9 +3761,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                           onChanged: (walletBalance > 0 && !isLoadingWallet) ? (value) {
                             setState(() {
                               useWalletBalance = value;
-                              if (value) {
-                                selectedPaymentMethod = 'Wallet';
-                              } else {
+                              // Don't automatically change payment method - allow combination
+                              if (!value) {
                                 selectedPaymentMethod = 'Online Payment';
                               }
                             });
@@ -3687,10 +3779,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   
                   // Payment Options
                   InkWell(
-                    onTap: shouldDisablePaymentMethods ? null : () {
+                    onTap: () {
                       setState(() {
                         selectedPaymentMethod = 'Online Payment';
-                        useWalletBalance = false;
+                        // Don't disable wallet - allow combination payments
                       });
                       // Update coupon discount for new payment method
                       _updateCouponForPaymentMethod();
@@ -3729,7 +3821,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                               ),
                             ),
                           ),
-                          if (shouldDisablePaymentMethods)
+                          if (useWalletBalance && walletCoversFullAmount)
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                               decoration: BoxDecoration(
@@ -3753,10 +3845,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   ),
                   const SizedBox(height: 12),
                   InkWell(
-                    onTap: shouldDisablePaymentMethods ? null : () {
+                    onTap: () {
                       setState(() {
                         selectedPaymentMethod = 'Pay at Collection';
-                        useWalletBalance = false;
+                        // Don't disable wallet - allow combination payments
                       });
                       // Update coupon discount for new payment method
                       _updateCouponForPaymentMethod();
@@ -3795,7 +3887,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                               ),
                             ),
                           ),
-                          if (shouldDisablePaymentMethods)
+                          if (useWalletBalance && walletCoversFullAmount)
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                               decoration: BoxDecoration(
@@ -3811,12 +3903,45 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                 ),
                               ),
                             ),
-                          if (selectedPaymentMethod == 'Pay at Collection' && !shouldDisablePaymentMethods)
+                          if (selectedPaymentMethod == 'Pay at Collection')
                             const Icon(Icons.check_circle, color: AppColors.primaryBlue),
                         ],
                       ),
                     ),
                   ),
+                  
+                  // Show discount notification for Pay at Collection
+                  if (selectedPaymentMethod == 'Pay at Collection') ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.orange[50],
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.orange[200]!),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline,
+                            color: Colors.orange[700],
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Discounts are only applicable for online payments',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.orange[700],
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -4213,10 +4338,81 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   ],
                 ],
               ),
+              // Show payment breakdown when using partial wallet
+              if (useWalletBalance && !walletCoversFullAmount) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryBlue.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppColors.primaryBlue.withOpacity(0.2)),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Payment Breakdown:',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.primaryBlue,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'From Wallet:',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey,
+                            ),
+                          ),
+                          Text(
+                            '₹${walletBalance.toStringAsFixed(0)}',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.primaryBlue,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Via ${selectedPaymentMethod}:',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey,
+                            ),
+                          ),
+                          Text(
+                            '₹${amountAfterWallet.toStringAsFixed(0)}',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.green,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 16),
               // Book Button
               ElevatedButton(
-                onPressed: selectedTests.isNotEmpty && 
+                onPressed: (selectedTests.isNotEmpty || selectedPackages.isNotEmpty) && 
                          (!isHomeCollection || (isHomeCollection && selectedAddress != null)) &&
                          (useWalletBalance ? amountAfterWallet <= 0 : true) && !isBooking ? () {
                   print('🔄 Book Now button pressed');
@@ -4446,12 +4642,14 @@ class _AddMoreItemsBottomSheet extends StatefulWidget {
   final String labName;
   final Set<String> cartItems;
   final VoidCallback onItemAdded;
+  final Function(String itemId, bool isPackage)? onRemoveFromCart;
 
   const _AddMoreItemsBottomSheet({
     required this.labId,
     required this.labName,
     required this.cartItems,
     required this.onItemAdded,
+    this.onRemoveFromCart,
   });
 
   @override
@@ -4610,19 +4808,31 @@ class _AddMoreItemsBottomSheetState extends State<_AddMoreItemsBottomSheet> {
     });
 
     try {
-      final price = double.tryParse(item['baseprice']?.toString() ?? '0') ?? 0.0;
+      // Get both original and discounted prices
+      final originalPrice = double.tryParse(item['baseprice']?.toString() ?? '0') ?? 0.0;
+      final discountedPrice = double.tryParse(item['discountedprice']?.toString() ?? item['baseprice']?.toString() ?? '0') ?? 0.0;
+      
+      // Get discount details
+      final discountedValue = double.tryParse(item['discountvalue']?.toString() ?? '0') ?? 0.0;
+      final discountType = item['discounttype']?.toString() ?? item['discount_type']?.toString() ?? 'percentage';
+      
+      print('🛒 Adding item to cart with original price: $originalPrice, discounted price: $discountedPrice');
+      print('🛒 Discount value: $discountedValue, discount type: $discountType');
       
       // For organization-specific tests, use test_id for lab_test_id key
       final labTestId = isPackage ? '' : (item['test_id']?.toString() ?? item['id']?.toString() ?? '');
       final packageId = isPackage ? (item['package_id']?.toString() ?? '') : null;
 
       final result = await _apiService.addToCart(
-        price: price,
+        price: originalPrice,
         testName: itemName,
         labTestId: labTestId,
         packageId: packageId,
         organizationId: widget.labId,
         organizationName: widget.labName,
+        discountedPrice: discountedPrice,
+        discountedValue: discountedValue,
+        discountType: discountType,
       );
 
       if (result['success']) {
@@ -4677,23 +4887,32 @@ class _AddMoreItemsBottomSheetState extends State<_AddMoreItemsBottomSheet> {
 
     try {
       // Get the item ID (test_id or package_id)
+      // For packages, try both package_id and id fields since the cart might store it differently
       final itemId = isPackage 
           ? (item['package_id']?.toString() ?? item['id']?.toString() ?? '')
           : (item['test_id']?.toString() ?? item['id']?.toString() ?? '');
       
-      // Find the cart item ID from the cart data
-      String? cartItemId;
+      print('🛒 Removing ${isPackage ? 'package' : 'test'} ID: $itemId from cart...');
+      print('🛒 Item data: $item');
+      print('🛒 Is package: $isPackage');
+      print('🛒 Package ID from item: ${item['package_id']}');
+      print('🛒 ID from item: ${item['id']}');
       
-      if (widget.cartItems.isNotEmpty) {
-        // We need to access the cart data from the parent widget
-        // For now, we'll use the item ID directly and let the API handle it
-        // This is a simplified approach - in a real scenario, we'd need to pass cart data
-        cartItemId = itemId;
-      }
-
-      final result = await _apiService.removeFromCart(cartItemId ?? itemId);
-
-      if (result['success']) {
+      // Call the parent widget's remove from cart method which has access to the ID mappings
+      if (widget.onRemoveFromCart != null) {
+        print('🛒 Calling parent remove method with itemId: $itemId, isPackage: $isPackage');
+        
+        // Try to find the cart item ID by matching the package name if it's a package
+        String finalItemId = itemId;
+        if (isPackage && itemId.isEmpty) {
+          // If package_id is empty, try to find by package name
+          final packageName = item['packagename'] ?? item['name'] ?? '';
+          print('🛒 Package ID is empty, trying to find by package name: $packageName');
+          // This is a fallback - ideally we should fix the ID mapping
+        }
+        
+        await widget.onRemoveFromCart!(finalItemId, isPackage);
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('$itemName removed from cart'),
@@ -4702,19 +4921,35 @@ class _AddMoreItemsBottomSheetState extends State<_AddMoreItemsBottomSheet> {
           ),
         );
         
-        // Update local state to remove the item from cart
-        setState(() {
-          widget.cartItems.remove(itemId);
-        });
-        
-        widget.onItemAdded(); // This will refresh the cart data
+        Navigator.of(context).pop();
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result['message'] ?? 'Failed to remove item'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        // Fallback: try to remove directly (this might not work without proper cart item ID)
+        final result = await _apiService.removeFromCart(itemId);
+
+        if (result['success']) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('$itemName removed from cart'),
+              backgroundColor: Colors.orange,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+          
+          // Update local state to remove the item from cart
+          setState(() {
+            widget.cartItems.remove(itemId);
+          });
+          
+          widget.onItemAdded(); // This will refresh the cart data
+          Navigator.of(context).pop();
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result['message'] ?? 'Failed to remove item'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(

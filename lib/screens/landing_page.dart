@@ -12,15 +12,17 @@ import 'family_members_screen.dart';
 import 'addresses_screen.dart';
 import 'lab_selection_screen.dart';
 import 'order_detail_screen.dart';
+import 'location_selection_screen.dart';
 import '../services/intro_service.dart';
 import '../services/token_service.dart';
 import '../services/api_service.dart';
 import '../services/storage_service.dart';
 import '../services/location_service.dart';
 import '../utils/auth_utils.dart';
+import '../utils/snackbar_helper.dart';
 import 'package:geolocator/geolocator.dart';
 import '../widgets/add_money_bottom_sheet.dart';
-import '../services/notification_service.dart';
+import '../widgets/profile_image_picker.dart';
 
 class LandingPage extends StatefulWidget {
   const LandingPage({super.key});
@@ -65,37 +67,7 @@ class _LandingPageState extends State<LandingPage> {
     _loadCartItems();
   }
 
-  void _testNotification() async {
-    try {
-      final notificationService = NotificationService();
-      await notificationService.showCustomNotification(
-        title: 'EmHealth Notification',
-        body: 'This is a test notification from EmHealth app!',
-        payload: json.encode({
-          'type': 'test',
-          'id': 'test_${DateTime.now().millisecondsSinceEpoch}',
-        }),
-      );
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Test notification sent!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error sending notification: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
+
 
   @override
   void didChangeDependencies() {
@@ -583,13 +555,15 @@ class _LandingPageState extends State<LandingPage> {
     }
     
     return Scaffold(
+      backgroundColor: AppColors.primaryBlue,
+      resizeToAvoidBottomInset: false,
       body: _pages[_currentIndex],
       floatingActionButton: FloatingActionButton(
         onPressed: () {
           _showCallOptions(context);
         },
-        backgroundColor: const Color(0xFF3B5BFE),
-        elevation: 8,
+        backgroundColor: AppColors.primaryBlue,
+        elevation: 0,
         child: const Icon(
           Icons.headset,
           color: Colors.white,
@@ -597,6 +571,7 @@ class _LandingPageState extends State<LandingPage> {
         ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.scaling,
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (index) {
@@ -608,7 +583,7 @@ class _LandingPageState extends State<LandingPage> {
         backgroundColor: Colors.white,
         selectedItemColor: AppColors.primaryBlue,
         unselectedItemColor: AppColors.grey,
-        elevation: 8,
+        elevation: 0,
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.home),
@@ -670,6 +645,39 @@ class _HomeTabState extends State<HomeTab> {
     super.initState();
     _loadUserProfile();
     _loadCartItems();
+  }
+
+  Future<void> _updateProfileImage(String imageUrl) async {
+    try {
+      final apiService = ApiService();
+      final result = await apiService.updateProfileImage(
+        imageUrl: imageUrl,
+        context: context,
+      );
+
+      if (result['success'] && mounted) {
+        // Update the profile data with the new image URL from the response
+        if (result['data'] != null && result['data']['profile'] != null) {
+          setState(() {
+            // Update the profile image URL in the user profile data
+            if (userProfile != null) {
+              userProfile!['profileimage'] = result['data']['profile']['profileimage'];
+              if (userProfile!['profile'] != null) {
+                userProfile!['profile']['profileimage'] = result['data']['profile']['profileimage'];
+              }
+            }
+          });
+        }
+        
+        // Also refresh the full profile data to ensure everything is up to date
+        await _loadUserProfile();
+        SnackBarHelper.showSuccess(context, 'Profile image updated successfully!');
+      } else {
+        SnackBarHelper.showError(context, result['message'] ?? 'Failed to update profile image');
+      }
+    } catch (e) {
+      SnackBarHelper.showError(context, 'Error updating profile image: ${e.toString()}');
+    }
   }
 
   Future<void> _loadUserProfile() async {
@@ -1270,207 +1278,23 @@ class _HomeTabState extends State<HomeTab> {
   }
 
   void _showLocationPicker(BuildContext context) {
-    final List<Map<String, String>> cities = [
-      {'name': 'Chennai', 'state': 'Tamil Nadu'},
-      {'name': 'Coimbatore', 'state': 'Tamil Nadu'},
-      {'name': 'Madurai', 'state': 'Tamil Nadu'},
-      {'name': 'Salem', 'state': 'Tamil Nadu'},
-      {'name': 'Tiruchirappalli', 'state': 'Tamil Nadu'},
-      {'name': 'Vellore', 'state': 'Tamil Nadu'},
-      {'name': 'Erode', 'state': 'Tamil Nadu'},
-      {'name': 'Tiruppur', 'state': 'Tamil Nadu'},
-      {'name': 'Thoothukkudi', 'state': 'Tamil Nadu'},
-      {'name': 'Dindigul', 'state': 'Tamil Nadu'},
-      {'name': 'Thanjavur', 'state': 'Tamil Nadu'},
-      {'name': 'Kanchipuram', 'state': 'Tamil Nadu'},
-      {'name': 'Nagercoil', 'state': 'Tamil Nadu'},
-      {'name': 'Kumbakonam', 'state': 'Tamil Nadu'},
-      {'name': 'Cuddalore', 'state': 'Tamil Nadu'},
-    ];
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (BuildContext context) {
-        return Container(
-          height: MediaQuery.of(context).size.height * 0.7,
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.only(
-              topLeft: Radius.circular(20),
-              topRight: Radius.circular(20),
-            ),
-          ),
-          child: Column(
-            children: [
-              // Handle bar
-              Container(
-                margin: const EdgeInsets.only(top: 12),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(2),
-                ),
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => LocationSelectionScreen(
+          currentLocation: selectedCity,
+          onLocationSelected: (String city) {
+            setState(() {
+              selectedCity = city;
+            });
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Location changed to $city'),
+                backgroundColor: Colors.green,
               ),
-              // Header
-              Padding(
-                padding: const EdgeInsets.all(20),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Select Your Location',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    IconButton(
-              onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
-              // Current location
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: GestureDetector(
-                  onTap: () => _getCurrentLocationAndShowToast(context),
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: AppColors.primaryBlue.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.primaryBlue.withOpacity(0.3)),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: AppColors.primaryBlue,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Icon(
-                            Icons.my_location,
-                            color: Colors.white,
-                            size: 20,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        const Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Use Current Location',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                ),
-                              ),
-                              Text(
-                                'Detect your location automatically',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.grey,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const Icon(
-                          Icons.arrow_forward_ios,
-                          size: 16,
-                          color: Colors.grey,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              // Tamil Nadu cities
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 20),
-                child: Row(
-                  children: [
-                    Text(
-                      'Tamil Nadu Cities',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              // Cities list
-              Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  itemCount: cities.length,
-                  itemBuilder: (context, index) {
-                    final city = cities[index];
-                    return ListTile(
-                      contentPadding: const EdgeInsets.symmetric(vertical: 4),
-                      leading: Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: Colors.grey[100],
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Icon(
-                          Icons.location_city,
-                          color: AppColors.primaryBlue,
-                          size: 20,
-                        ),
-                      ),
-                      title: Text(
-                        city['name']!,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 16,
-                        ),
-                      ),
-                      subtitle: Text(
-                        city['state']!,
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                      trailing: const Icon(
-                        Icons.arrow_forward_ios,
-                        size: 16,
-                        color: Colors.grey,
-                      ),
-                      onTap: () {
-                        setState(() {
-                          selectedCity = city['name']!;
-                        });
-                        Navigator.of(context).pop();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Location changed to ${city['name']}, ${city['state']}'),
-                            backgroundColor: Colors.green,
-                          ),
-                        );
-                      },
-                    );
-                  },
-                ),
-            ),
-          ],
-          ),
-        );
-      },
+            );
+          },
+        ),
+      ),
     );
   }
 
@@ -1478,11 +1302,7 @@ class _HomeTabState extends State<HomeTab> {
   Widget build(BuildContext context) {
     return Container(
       decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFFAFAFA), Color(0xFFF0F0F0)],
-        ),
+        color: AppColors.primaryBlue,
       ),
       child: SafeArea(
         child: Column(
@@ -1500,15 +1320,15 @@ class _HomeTabState extends State<HomeTab> {
                     },
                     child: Row(
                       children: [
-                        Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: AppColors.primaryBlue.withOpacity(0.1),
-                            shape: BoxShape.circle,
-                          ),
-                          child: isLoadingProfile
-                              ? const Center(
+                        isLoadingProfile
+                            ? Container(
+                                width: 40,
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: AppColors.primaryBlue.withOpacity(0.1),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Center(
                                   child: SizedBox(
                                     width: 20,
                                     height: 20,
@@ -1517,29 +1337,15 @@ class _HomeTabState extends State<HomeTab> {
                                       valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryBlue),
                                     ),
                                   ),
-                                )
-                              : userProfile?['profileimage'] != null
-                                  ? ClipOval(
-                                      child: Image.network(
-                                        userProfile!['profileimage'],
-                                        width: 40,
-                                        height: 40,
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (context, error, stackTrace) {
-                                          return const Icon(
-                            Icons.person,
-                            color: AppColors.primaryBlue,
-                            size: 24,
-                                          );
-                                        },
-                                      ),
-                                    )
-                                  : const Icon(
-                                      Icons.person,
-                                      color: AppColors.primaryBlue,
-                                      size: 24,
-                          ),
-                        ),
+                                ),
+                              )
+                            : ProfileImagePicker(
+                                currentImageUrl: userProfile?['profileimage'],
+                                userId: userProfile?['user']?['id']?.toString() ?? 'unknown',
+                                size: 40,
+                                onImageUploaded: _updateProfileImage,
+                                showEditIcon: false, // Don't show edit icon in header
+                              ),
                         const SizedBox(width: 12),
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1558,7 +1364,7 @@ class _HomeTabState extends State<HomeTab> {
                                 userProfile?['profile']?['full_name'] ?? 'Customer',
                                 style: const TextStyle(
                                 fontWeight: FontWeight.bold,
-                                color: AppColors.primaryBlue,
+                                color: Colors.white,
                                 fontSize: 16,
                               ),
                             ),
@@ -1578,7 +1384,7 @@ class _HomeTabState extends State<HomeTab> {
                                 Text(
                                     selectedCity,
                                     style: const TextStyle(
-                                    color: AppColors.grey,
+                                    color: Colors.white,
                                     fontSize: 13,
                                   ),
                                 ),
@@ -1592,7 +1398,7 @@ class _HomeTabState extends State<HomeTab> {
                                   child: const Icon(
                                   Icons.edit_location,
                                     size: 10,
-                                    color: AppColors.primaryBlue,
+                                    color: Colors.white,
                                   ),
                                 ),
                               ],
@@ -1607,7 +1413,7 @@ class _HomeTabState extends State<HomeTab> {
                   Stack(
                     children: [
                       IconButton(
-                        icon: const Icon(Icons.shopping_cart_outlined, color: AppColors.primaryBlue),
+                        icon: const Icon(Icons.shopping_cart_outlined, color: Colors.white),
                         onPressed: () {
                           // Show cart summary bottom sheet
                           _showCartSummaryBottomSheet(context);
@@ -1645,7 +1451,7 @@ class _HomeTabState extends State<HomeTab> {
                   Stack(
                     children: [
                       IconButton(
-                        icon: const Icon(Icons.notifications_none, color: AppColors.primaryBlue),
+                        icon: const Icon(Icons.notifications_none, color: Colors.white),
                         onPressed: () {},
                       ),
                       Positioned(
@@ -1718,13 +1524,13 @@ class _HomeTabState extends State<HomeTab> {
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 20,
-                                    color: Colors.black,
+                                    color: Colors.white,
                             ),
                           ),
                           TextButton(
                             onPressed: () {},
                             style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(40, 30)),
-                                  child: const Text('View All', style: TextStyle(color: Color(0xFF3B5BFE), fontWeight: FontWeight.w600)),
+                                  child: const Text('View All', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
                           ),
                         ],
                       ),
@@ -1746,13 +1552,13 @@ class _HomeTabState extends State<HomeTab> {
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 20,
-                                    color: AppColors.primaryBlue,
+                                    color: Colors.white,
                             ),
                           ),
                           TextButton(
                             onPressed: () {},
                             style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(40, 30)),
-                                  child: const Text('View all'),
+                                  child: const Text('View all', style: TextStyle(color: Colors.white)),
                           ),
                         ],
                       ),
@@ -1770,15 +1576,15 @@ class _HomeTabState extends State<HomeTab> {
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
-                          color: Colors.black,
+                          color: Colors.white,
                         ),
                       ),
                     ),
                     const SizedBox(height: 12),
                     const _WomenCareGrid(),
                     const SizedBox(height: 24),
-                    const _HelpBookingCard(),
-                    const SizedBox(height: 24),
+                    // const _HelpBookingCard(),
+                    // const SizedBox(height: 24),
                   ],
                 ),
                     ),
@@ -2934,15 +2740,15 @@ class _TestsTabState extends State<TestsTab> with SingleTickerProviderStateMixin
     return DefaultTabController(
       length: 2,
       child: Scaffold(
-        backgroundColor: const Color(0xFFF7F9FB),
+        backgroundColor: AppColors.primaryBlue,
         appBar: PreferredSize(
           preferredSize: const Size.fromHeight(180),
           child: SafeArea(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
                     child: Row(
                       children: [
                         Expanded(
@@ -2952,11 +2758,47 @@ class _TestsTabState extends State<TestsTab> with SingleTickerProviderStateMixin
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                             fontSize: 20,
-                              color: Colors.black,
+                              color: Colors.white,
                             ),
                           ),
                         ),
-
+                        // Cart Icon with Item Count
+                        Stack(
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.shopping_cart_outlined, color: Colors.white),
+                              onPressed: () {
+                                // Show cart summary bottom sheet
+                                _showCartSummaryBottomSheet(context);
+                              },
+                            ),
+                            if (widget.cartItems.isNotEmpty)
+                              Positioned(
+                                right: 8,
+                                top: 8,
+                                child: Container(
+                                  padding: const EdgeInsets.all(2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.red,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  constraints: const BoxConstraints(
+                                    minWidth: 16,
+                                    minHeight: 16,
+                                  ),
+                                  child: Text(
+                                    '${widget.cartItems.length}',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
                       ],
                     ),
                   ),
@@ -2969,7 +2811,7 @@ class _TestsTabState extends State<TestsTab> with SingleTickerProviderStateMixin
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: const Color(0xFF3B5BFE), width: 1),
+                            border: Border.all(color: AppColors.primaryBlue, width: 1),
                           ),
                           child: Row(
                             children: [
@@ -2996,7 +2838,10 @@ class _TestsTabState extends State<TestsTab> with SingleTickerProviderStateMixin
                                             child: SizedBox(
                                               width: 16,
                                               height: 16,
-                                              child: CircularProgressIndicator(strokeWidth: 2),
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                              ),
                                             ),
                                           )
                                         : _searchQuery.isNotEmpty
@@ -3017,12 +2862,12 @@ class _TestsTabState extends State<TestsTab> with SingleTickerProviderStateMixin
                                   ),
                                 ),
                               ),
-                              IconButton(
-                                icon: const Icon(Icons.filter_alt_outlined, color: Color(0xFF3B5BFE)),
-                              onPressed: () {
-                                _showFilterBottomSheet(context);
-                              },
-                              ),
+                              // IconButton(
+                              //   icon: const Icon(Icons.filter_alt_outlined, color: Color(0xFF3B5BFE)),
+                              // onPressed: () {
+                              //   _showFilterBottomSheet(context);
+                              // },
+                              // ),
                             ],
                           ),
                         ),
@@ -3030,42 +2875,28 @@ class _TestsTabState extends State<TestsTab> with SingleTickerProviderStateMixin
                       Container(
                         height: 50,
                         decoration: BoxDecoration(
-                          color: Colors.grey[100],
-                          borderRadius: BorderRadius.circular(25),
-                          border: Border.all(color: Colors.grey[300]!, width: 1),
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.white.withOpacity(0.2)),
                         ),
                         child: TabBar(
                           controller: _tabController,
                           indicator: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [AppColors.primaryBlue, Color(0xFF5B7BFF)],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            borderRadius: BorderRadius.circular(23),
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppColors.primaryBlue.withOpacity(0.3),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
+                            borderRadius: BorderRadius.circular(12),
+                            color: AppColors.primaryBlue,
                           ),
-                          indicatorSize: TabBarIndicatorSize.tab,
                           labelColor: Colors.white,
-                          unselectedLabelColor: Colors.grey[700],
+                          unselectedLabelColor: AppColors.primaryBlue,
                           labelStyle: const TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 15,
-                            letterSpacing: 0.5,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 16,
                           ),
                           unselectedLabelStyle: const TextStyle(
                             fontWeight: FontWeight.w500,
-                            fontSize: 15,
-                            letterSpacing: 0.3,
+                            fontSize: 16,
                           ),
                           dividerColor: Colors.transparent,
-                          indicatorPadding: const EdgeInsets.all(2),
+                          indicatorSize: TabBarIndicatorSize.tab,
                           tabs: const [
                             Tab(
                               child: Row(
@@ -3084,12 +2915,12 @@ class _TestsTabState extends State<TestsTab> with SingleTickerProviderStateMixin
                                   Icon(Icons.inventory_2, size: 18),
                                   SizedBox(width: 6),
                                   Text('Packages'),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -3518,6 +3349,164 @@ class _TestsTabState extends State<TestsTab> with SingleTickerProviderStateMixin
       ),
     );
   }
+
+  /// Show cart summary bottom sheet
+  void _showCartSummaryBottomSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => Container(
+        height: MediaQuery.of(context).size.height * 0.7,
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(20),
+            topRight: Radius.circular(20),
+          ),
+        ),
+        child: Column(
+          children: [
+            // Handle bar
+            Container(
+              margin: const EdgeInsets.only(top: 8),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            
+            // Header
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.shopping_cart,
+                    color: AppColors.primaryBlue,
+                    size: 24,
+                  ),
+                  const SizedBox(width: 12),
+                  const Text(
+                    'Cart Summary',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black,
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
+            ),
+            
+            // Cart items list
+            Expanded(
+              child: widget.cartItems.isEmpty
+                  ? const Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.shopping_cart_outlined,
+                            size: 64,
+                            color: Colors.grey,
+                          ),
+                          SizedBox(height: 16),
+                          Text(
+                            'Your cart is empty',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.grey,
+                            ),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            'Add some tests or packages to get started',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      itemCount: widget.cartItems.length,
+                      itemBuilder: (context, index) {
+                        final itemName = widget.cartItems.elementAt(index);
+                        
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          child: ListTile(
+                            title: Text(
+                              itemName,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            subtitle: const Text('Test/Package'),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
+                              onPressed: () {
+                                widget.onRemoveFromCart(itemName);
+                                Navigator.pop(context);
+                              },
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+            
+            // Checkout button
+            if (widget.cartItems.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.all(20),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      // Navigate to checkout or show checkout options
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Proceed to checkout'),
+                          backgroundColor: AppColors.primaryBlue,
+                        ),
+                      );
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primaryBlue,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text(
+                      'Proceed to Checkout',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 
@@ -3577,7 +3566,13 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
       if (result['success'] && mounted) {
         final data = result['data'];
         final appointments = List<Map<String, dynamic>>.from(data['data'] ?? []);
-        print('🔄 API Service: Upcoming orders: $appointments');
+        
+        // Debug: Print the first appointment to see the data structure
+        if (appointments.isNotEmpty) {
+          print('🔄 Debug: First upcoming appointment data structure:');
+          print('🔄 Debug: ${appointments.first}');
+        }
+        
         setState(() {
           upcomingOrders = appointments;
           isLoadingUpcoming = false;
@@ -3616,6 +3611,12 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
       if (result['success'] && mounted) {
         final data = result['data'];
         final appointments = List<Map<String, dynamic>>.from(data['data'] ?? []);
+        
+        // Debug: Print the first appointment to see the data structure
+        if (appointments.isNotEmpty) {
+          print('🔄 Debug: First past appointment data structure:');
+          print('🔄 Debug: ${appointments.first}');
+        }
         
         setState(() {
           pastOrders = appointments;
@@ -3665,6 +3666,241 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
     return '${displayHour.toString().padLeft(2, '0')}:$minute $period';
   }
 
+  String _formatAppointmentDate(Map<String, dynamic> order) {
+    // Try different possible date fields
+    final dateString = order['appointment_date']?.toString() ?? 
+                      order['date']?.toString() ?? 
+                      order['scheduled_date']?.toString() ?? 
+                      order['created_at']?.toString() ?? 
+                      'N/A';
+    
+    if (dateString == 'N/A') return 'N/A';
+    
+    try {
+      final dateTime = DateTime.parse(dateString);
+      return '${dateTime.day.toString().padLeft(2, '0')}/${dateTime.month.toString().padLeft(2, '0')}/${dateTime.year}';
+    } catch (e) {
+      return dateString;
+    }
+  }
+
+  String _formatAppointmentTime(Map<String, dynamic> order) {
+    // Try different possible time fields
+    final timeString = order['appointment_time']?.toString() ?? 
+                      order['time']?.toString() ?? 
+                      order['scheduled_time']?.toString() ?? 
+                      'N/A';
+    
+    if (timeString == 'N/A') return 'N/A';
+    
+    try {
+      // If it's a full datetime string, extract time
+      if (timeString.contains('T') || timeString.contains(' ')) {
+        final dateTime = DateTime.parse(timeString);
+        return _formatTimeOnly(dateTime);
+      }
+      
+      // If it's just a time string, try to parse it
+      if (timeString.contains(':')) {
+        final parts = timeString.split(':');
+        if (parts.length >= 2) {
+          final hour = int.tryParse(parts[0]) ?? 0;
+          final minute = int.tryParse(parts[1]) ?? 0;
+          final period = hour >= 12 ? 'PM' : 'AM';
+          final displayHour = hour == 0 ? 12 : (hour > 12 ? hour - 12 : hour);
+          return '${displayHour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')} $period';
+        }
+      }
+      
+      return timeString;
+    } catch (e) {
+      return timeString;
+        }
+  }
+
+  String _getTestPackageNames(Map<String, dynamic> order) {
+    final lineItems = order['lineItems'] as List<dynamic>? ?? [];
+    if (lineItems.isEmpty) {
+      return 'No tests/packages';
+    }
+    
+    final names = <String>[];
+    for (final item in lineItems) {
+      if (item['test'] != null) {
+        names.add(item['test']['testname'] ?? 'Unknown Test');
+      } else if (item['package'] != null) {
+        names.add(item['package']['packagename'] ?? 'Unknown Package');
+      }
+    }
+    
+    if (names.isEmpty) {
+      return 'No tests/packages';
+    } else if (names.length == 1) {
+      return names.first;
+    } else {
+      return '${names.first} +${names.length - 1} more';
+    }
+  }
+
+  String _formatPastDate(Map<String, dynamic> order) {
+    final dateString = order['appointment_datetime']?.toString() ?? 
+                      order['appointment_date']?.toString() ?? 
+                      order['date']?.toString() ?? 
+                      'N/A';
+    
+    if (dateString == 'N/A') return 'N/A';
+    
+    try {
+      final dateTime = DateTime.parse(dateString);
+      return '${dateTime.day.toString().padLeft(2, '0')}/${dateTime.month.toString().padLeft(2, '0')}/${dateTime.year}';
+    } catch (e) {
+      return dateString;
+    }
+  }
+
+  String _formatPastTime(Map<String, dynamic> order) {
+    final dateString = order['appointment_datetime']?.toString() ?? 
+                      order['appointment_time']?.toString() ?? 
+                      order['time']?.toString() ?? 
+                      'N/A';
+    
+    if (dateString == 'N/A') return 'N/A';
+    
+    try {
+      final dateTime = DateTime.parse(dateString);
+      final hour = dateTime.hour;
+      final minute = dateTime.minute.toString().padLeft(2, '0');
+      
+      // Convert to 12-hour format
+      final period = hour >= 12 ? 'PM' : 'AM';
+      final displayHour = hour == 0 ? 12 : (hour > 12 ? hour - 12 : hour);
+      
+      return '${displayHour.toString().padLeft(2, '0')}:$minute $period';
+    } catch (e) {
+      return dateString;
+    }
+  }
+
+  String _formatPastCollectionType(Map<String, dynamic> order) {
+    final isHomeCollection = order['is_home_collection'] ?? false;
+    return isHomeCollection ? 'Home Collection' : 'Lab Collection';
+  }
+
+  String _formatPastAmount(Map<String, dynamic> order) {
+    final amountRaw = order['final_amount'] ?? 
+                     order['total_amount'] ?? 
+                     order['amount'] ?? 
+                     0.0;
+    
+    if (amountRaw == 0.0) return 'N/A';
+    
+    try {
+      final amount = amountRaw is String 
+          ? double.tryParse(amountRaw) ?? 0.0 
+          : (amountRaw is num ? amountRaw.toDouble() : 0.0);
+      
+      if (amount == 0.0) return 'N/A';
+      
+      return '₹${amount.toStringAsFixed(2)}';
+    } catch (e) {
+      return 'N/A';
+    }
+  }
+
+  String _formatCollectionType(Map<String, dynamic> order) {
+    // Try different possible collection type fields
+    final isHomeCollection = order['is_home_collection'] ?? 
+                           order['home_collection'] ?? 
+                           order['collection_type'] == 'home' ?? 
+                           false;
+    
+    return isHomeCollection ? 'Home Collection' : 'Lab Collection';
+  }
+
+  String _formatUpcomingAmount(Map<String, dynamic> order) {
+    // Try different possible amount fields for upcoming appointments
+    final amountRaw = order['final_amount'] ?? 
+                     order['amount'] ?? 
+                     order['total_amount'] ?? 
+                     order['paid_amount'] ?? 
+                     0.0;
+    
+    if (amountRaw == 0.0) return 'N/A';
+    
+    try {
+      final amount = amountRaw is String 
+          ? double.tryParse(amountRaw) ?? 0.0 
+          : (amountRaw is num ? amountRaw.toDouble() : 0.0);
+      
+      if (amount == 0.0) return 'N/A';
+      
+      return '₹${amount.toStringAsFixed(2)}';
+    } catch (e) {
+      return 'N/A';
+    }
+  }
+
+  String _formatAmount(Map<String, dynamic> order) {
+    // Try different possible amount fields
+    final amountRaw = order['amount'] ?? 
+                     order['total_amount'] ?? 
+                     order['final_amount'] ?? 
+                     order['paid_amount'] ?? 
+                     0.0;
+    
+    if (amountRaw == 0.0) return 'N/A';
+    
+    try {
+      final amount = amountRaw is String 
+          ? double.tryParse(amountRaw) ?? 0.0 
+          : (amountRaw is num ? amountRaw.toDouble() : 0.0);
+      
+      if (amount == 0.0) return 'N/A';
+      
+      return '₹${amount.toStringAsFixed(2)}';
+    } catch (e) {
+      return 'N/A';
+    }
+  }
+
+  String _formatUpcomingDate(Map<String, dynamic> order) {
+    // Try different possible date fields for upcoming appointments
+    final dateString = order['appointment_datetime']?.toString() ?? 
+                      order['appointment_date']?.toString() ?? 
+                      order['scheduled_datetime']?.toString() ?? 
+                      order['scheduled_date']?.toString() ?? 
+                      order['date']?.toString() ?? 
+                      'N/A';
+    
+    if (dateString == 'N/A') return 'N/A';
+    
+    try {
+      final dateTime = DateTime.parse(dateString);
+      return _formatDateTime(dateTime.toLocal());
+    } catch (e) {
+      return dateString;
+    }
+  }
+
+  String _formatUpcomingTime(Map<String, dynamic> order) {
+    // Try different possible time fields for upcoming appointments
+    final timeString = order['appointment_datetime']?.toString() ?? 
+                      order['appointment_time']?.toString() ?? 
+                      order['scheduled_datetime']?.toString() ?? 
+                      order['scheduled_time']?.toString() ?? 
+                      order['time']?.toString() ?? 
+                      'N/A';
+    
+    if (timeString == 'N/A') return 'N/A';
+    
+    try {
+      final dateTime = DateTime.parse(timeString);
+      return _formatTimeOnly(dateTime.toLocal());
+    } catch (e) {
+      return timeString;
+    }
+  }
+
   @override
   void dispose() {
     _tabController.dispose();
@@ -3685,13 +3921,23 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
         showDialog(
           context: context,
           barrierDismissible: false,
-          builder: (context) => const AlertDialog(
+          builder: (context) => AlertDialog(
+            backgroundColor: AppColors.primaryBlue,
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 16),
-                Text('Cancelling appointment...'),
+                const CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Cancelling appointment...',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
               ],
             ),
           ),
@@ -3755,11 +4001,7 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
   Widget build(BuildContext context) {
     return Container(
       decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFEAF3FB), Color(0xFFD2E5F6)],
-        ),
+        color: AppColors.primaryBlue,
       ),
       child: SafeArea(
         child: Column(
@@ -3774,26 +4016,18 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
                   Container(
                     width: double.infinity,
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: Colors.white.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
-                          blurRadius: 10,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
+                      border: Border.all(color: Colors.white.withOpacity(0.2)),
                     ),
                     child: TabBar(
                       controller: _tabController,
                       indicator: BoxDecoration(
                         borderRadius: BorderRadius.circular(12),
-                        gradient: const LinearGradient(
-                          colors: [AppColors.primaryBlue, Color(0xFF1976D2)],
-                        ),
+                        color: Colors.white,
                       ),
-                      labelColor: Colors.white,
-                      unselectedLabelColor: AppColors.grey,
+                      labelColor: AppColors.primaryBlue,
+                      unselectedLabelColor: Colors.white,
                       labelStyle: const TextStyle(
                         fontWeight: FontWeight.w600,
                         fontSize: 16,
@@ -3839,9 +4073,18 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            CircularProgressIndicator(),
+            CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+            ),
             SizedBox(height: 16),
-            Text('Loading upcoming orders...'),
+            Text(
+              'Loading upcoming orders...',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ],
       ),
     );
@@ -3873,13 +4116,20 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
       return _buildEmptyState('No upcoming orders', 'You don\'t have any scheduled tests', isUpcoming: true);
     }
     
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      itemCount: upcomingOrders.length,
-      itemBuilder: (context, index) {
-        final order = upcomingOrders[index];
-        return _buildUpcomingOrderCard(context, order);
+    return RefreshIndicator(
+      onRefresh: () async {
+        await _loadUpcomingOrders();
       },
+      color: Colors.white,
+      backgroundColor: AppColors.primaryBlue,
+      child: ListView.builder(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        itemCount: upcomingOrders.length,
+        itemBuilder: (context, index) {
+          final order = upcomingOrders[index];
+          return _buildUpcomingOrderCard(context, order);
+        },
+      ),
     );
   }
 
@@ -3889,9 +4139,18 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            CircularProgressIndicator(),
+            CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+            ),
             SizedBox(height: 16),
-            Text('Loading past orders...'),
+            Text(
+              'Loading past orders...',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ],
         ),
       );
@@ -3923,13 +4182,20 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
       return _buildEmptyState('No past orders', 'You haven\'t completed any tests yet', isUpcoming: false);
     }
     
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      itemCount: pastOrders.length,
-      itemBuilder: (context, index) {
-        final order = pastOrders[index];
-        return _buildPastOrderCard(context, order);
+    return RefreshIndicator(
+      onRefresh: () async {
+        await _loadPastOrders();
       },
+      color: Colors.white,
+      backgroundColor: AppColors.primaryBlue,
+      child: ListView.builder(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        itemCount: pastOrders.length,
+        itemBuilder: (context, index) {
+          final order = pastOrders[index];
+          return _buildPastOrderCard(context, order);
+        },
+      ),
     );
   }
 
@@ -3986,7 +4252,11 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                      order['organization']['name']?.toString() ?? 'Lab Name',
+                      order['organization']?['name']?.toString() ?? 
+                      order['lab_name']?.toString() ?? 
+                      order['lab']?.toString() ?? 
+                      order['organization_name']?.toString() ?? 
+                      'Lab Name',
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -3995,7 +4265,9 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
                 ),
                 const SizedBox(height: 4),
                 Text(
-                      order['name']?.toString() ?? 'Test Name',
+                      order['organization']?['branchname']?.toString() ?? 
+                      
+                      'Branch Name',
                   style: const TextStyle(
                     fontSize: 14,
                     color: AppColors.grey,
@@ -4030,19 +4302,8 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
                 child: _buildDetailItem(
                   Icons.calendar_today,
                   'Date',
-                  order['appointment_datetime'] != null
-                      ? DateTime.tryParse(order['appointment_datetime'].toString()) != null
-                          ? _formatDateTime(DateTime.parse(order['appointment_datetime'].toString()).toLocal())
-                          : order['appointment_datetime'].toString()
-                      : 'N/A',
+                  _formatUpcomingDate(order),
                 ),
-              ),
-              Expanded(
-                child: _buildDetailItem(Icons.access_time, 'Time', order['appointment_datetime'] != null
-                      ? DateTime.tryParse(order['appointment_datetime'].toString()) != null
-                          ? _formatTimeOnly(DateTime.parse(order['appointment_datetime'].toString()).toLocal())
-                          : order['appointment_datetime'].toString()
-                      : 'N/A'),
               ),
             ],
           ),
@@ -4050,10 +4311,10 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
           Row(
             children: [
               Expanded(
-                child: _buildDetailItem(Icons.location_on, 'Collection', order['is_home_collection'] ? 'Home Collection' :  'Lab Collection'),
+                child: _buildDetailItem(Icons.location_on, 'Collection', _formatCollectionType(order)),
               ),
               Expanded(
-                child: _buildDetailItem(Icons.payment, 'Amount', order['final_amount']?.toString() ?? 'N/A'),
+                child: _buildDetailItem(Icons.payment, 'Amount', _formatUpcomingAmount(order)),
               ),
             ],
           ),
@@ -4158,7 +4419,11 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                      order['lab']?.toString() ?? 'Lab Name',
+                      order['organization']?['name']?.toString() ?? 
+                      order['lab_name']?.toString() ?? 
+                      order['lab']?.toString() ?? 
+                      order['organization_name']?.toString() ?? 
+                      'Lab Name',
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -4167,7 +4432,10 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
                 ),
                 const SizedBox(height: 4),
                 Text(
-                      order['name']?.toString() ?? 'Test Name',
+                      order['organization']?['branch_name']?.toString() ?? 
+                      order['organization']?['name']?.toString() ?? 
+                      order['branch_name']?.toString() ?? 
+                      'Branch Name',
                   style: const TextStyle(
                     fontSize: 14,
                     color: AppColors.grey,
@@ -4199,10 +4467,7 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
           Row(
             children: [
               Expanded(
-                child: _buildDetailItem(Icons.calendar_today, 'Date', order['date']?.toString() ?? 'N/A'),
-              ),
-              Expanded(
-                child: _buildDetailItem(Icons.access_time, 'Time', order['time']?.toString() ?? 'N/A'),
+                child: _buildDetailItem(Icons.calendar_today, 'Date', _formatPastDate(order)),
               ),
             ],
           ),
@@ -4210,10 +4475,10 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
           Row(
             children: [
               Expanded(
-                child: _buildDetailItem(Icons.location_on, 'Collection', order['collectionType']?.toString() ?? 'N/A'),
+                child: _buildDetailItem(Icons.location_on, 'Collection', _formatPastCollectionType(order)),
               ),
               Expanded(
-                child: _buildDetailItem(Icons.payment, 'Amount', order['amount']?.toString() ?? 'N/A'),
+                child: _buildDetailItem(Icons.payment, 'Amount', _formatPastAmount(order)),
               ),
             ],
           ),
@@ -4310,13 +4575,13 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
               width: 120,
               height: 120,
               decoration: BoxDecoration(
-                color: isUpcoming ? AppColors.primaryBlue.withOpacity(0.1) : Colors.grey[100],
+                color: Colors.white.withOpacity(0.2),
                 shape: BoxShape.circle,
               ),
               child: Icon(
                 isUpcoming ? Icons.schedule : Icons.history,
                 size: 60,
-                color: isUpcoming ? AppColors.primaryBlue : Colors.grey[400],
+                color: Colors.white,
               ),
             ),
             const SizedBox(height: 24),
@@ -4325,16 +4590,16 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
               style: const TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
-                color: Colors.black87,
+                color: Colors.white,
               ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 12),
             Text(
               subtitle,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 16,
-                color: Colors.grey[600],
+                color: Colors.white,
                 height: 1.4,
               ),
               textAlign: TextAlign.center,
@@ -4419,6 +4684,97 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
       },
     };
   }
+
+  String _getTestPackageNames(Map<String, dynamic> order) {
+    final lineItems = order['lineItems'] as List<dynamic>? ?? [];
+    if (lineItems.isEmpty) {
+      return 'No tests/packages';
+    }
+    
+    final names = <String>[];
+    for (final item in lineItems) {
+      if (item['test'] != null) {
+        names.add(item['test']['testname'] ?? 'Unknown Test');
+      } else if (item['package'] != null) {
+        names.add(item['package']['packagename'] ?? 'Unknown Package');
+      }
+    }
+    
+    if (names.isEmpty) {
+      return 'No tests/packages';
+    } else if (names.length == 1) {
+      return names.first;
+    } else {
+      return '${names.first} +${names.length - 1} more';
+    }
+  }
+
+  String _formatPastDate(Map<String, dynamic> order) {
+    final dateString = order['appointment_datetime']?.toString() ?? 
+                      order['appointment_date']?.toString() ?? 
+                      order['date']?.toString() ?? 
+                      'N/A';
+    
+    if (dateString == 'N/A') return 'N/A';
+    
+    try {
+      final dateTime = DateTime.parse(dateString);
+      return '${dateTime.day.toString().padLeft(2, '0')}/${dateTime.month.toString().padLeft(2, '0')}/${dateTime.year}';
+    } catch (e) {
+      return dateString;
+    }
+  }
+
+  String _formatPastTime(Map<String, dynamic> order) {
+    final dateString = order['appointment_datetime']?.toString() ?? 
+                      order['appointment_time']?.toString() ?? 
+                      order['time']?.toString() ?? 
+                      'N/A';
+    
+    if (dateString == 'N/A') return 'N/A';
+    
+    try {
+      final dateTime = DateTime.parse(dateString);
+      final hour = dateTime.hour;
+      final minute = dateTime.minute.toString().padLeft(2, '0');
+      
+      // Convert to 12-hour format
+      final period = hour >= 12 ? 'PM' : 'AM';
+      final displayHour = hour == 0 ? 12 : (hour > 12 ? hour - 12 : hour);
+      
+      return '${displayHour.toString().padLeft(2, '0')}:$minute $period';
+    } catch (e) {
+      return dateString;
+    }
+  }
+
+  String _formatPastCollectionType(Map<String, dynamic> order) {
+    final isHomeCollection = order['is_home_collection'] ?? false;
+    return isHomeCollection ? 'Home Collection' : 'Lab Collection';
+  }
+
+  String _formatPastAmount(Map<String, dynamic> order) {
+    final amountRaw = order['final_amount'] ?? 
+                     order['total_amount'] ?? 
+                     order['amount'] ?? 
+                     0.0;
+    
+    if (amountRaw == 0.0) return 'N/A';
+    
+    try {
+      final amount = amountRaw is String 
+          ? double.tryParse(amountRaw) ?? 0.0 
+          : (amountRaw is num ? amountRaw.toDouble() : 0.0);
+      
+      if (amount == 0.0) return 'N/A';
+      
+      return '₹${amount.toStringAsFixed(2)}';
+    } catch (e) {
+      return 'N/A';
+    }
+  }
+  
+
 
 
 // Call Tab
@@ -4625,6 +4981,39 @@ class _ProfileTabState extends State<ProfileTab> {
     }
   }
 
+  Future<void> _updateProfileImage(String imageUrl) async {
+    try {
+      final apiService = ApiService();
+      final result = await apiService.updateProfileImage(
+        imageUrl: imageUrl,
+        context: context,
+      );
+
+      if (result['success'] && mounted) {
+        // Update the profile data with the new image URL from the response
+        if (result['data'] != null && result['data']['profile'] != null) {
+          setState(() {
+            // Update the profile image URL in the user profile data
+            if (userProfile != null) {
+              userProfile!['profileimage'] = result['data']['profile']['profileimage'];
+              if (userProfile!['profile'] != null) {
+                userProfile!['profile']['profileimage'] = result['data']['profile']['profileimage'];
+              }
+            }
+          });
+        }
+        
+        // Also refresh the full profile data to ensure everything is up to date
+        await _loadUserProfile();
+        SnackBarHelper.showSuccess(context, 'Profile image updated successfully!');
+      } else {
+        SnackBarHelper.showError(context, result['message'] ?? 'Failed to update profile image');
+      }
+    } catch (e) {
+      SnackBarHelper.showError(context, 'Error updating profile image: ${e.toString()}');
+    }
+  }
+
   void _shareReferralLink() {
     final referralLink = referralStats?['referral_link'] ?? 'https://yourapp.com/referral';
     final referralCode = referralStats?['user_info']?['referral_code'] ?? '';
@@ -4755,11 +5144,7 @@ class _ProfileTabState extends State<ProfileTab> {
   Widget build(BuildContext context) {
     return Container(
       decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFFE3F2FD), Color(0xFFF5F5F5)],
-        ),
+        color: AppColors.primaryBlue,
       ),
       child: SafeArea(
         child: SingleChildScrollView(
@@ -4770,49 +5155,37 @@ class _ProfileTabState extends State<ProfileTab> {
               Row(
                 children: [
                   // Profile picture
-              Container(
-                    width: 80,
-                    height: 80,
-                decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [Color(0xFF3B5BFE), Color(0xFF5C6BC0)],
-                      ),
-                      shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                          color: const Color(0xFF3B5BFE).withOpacity(0.3),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                    child: isLoadingProfile
-                        ? const CircularProgressIndicator(
+                  isLoadingProfile
+                      ? Container(
+                          width: 80,
+                          height: 80,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [AppColors.primaryBlue, AppColors.primaryBlue],
+                            ),
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF3B5BFE).withOpacity(0.3),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: const CircularProgressIndicator(
                             color: Colors.white,
                             strokeWidth: 2,
-                          )
-                        : userProfile?['profile']?['profileimage'] != null
-                            ? ClipOval(
-                                child: Image.network(
-                                  userProfile!['profile']['profileimage'],
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return const Icon(
-                                      Icons.person,
-                                      size: 40,
-                                      color: Colors.white,
-                                    );
-                                  },
-                                ),
-                              )
-                            : const Icon(
-                                Icons.person,
-                                size: 40,
-                                color: Colors.white,
-                              ),
-                  ),
+                          ),
+                        )
+                      : ProfileImagePicker(
+                          currentImageUrl: userProfile?['profile']?['profileimage'],
+                          userId: userProfile?['user']?['id']?.toString() ?? 'unknown',
+                          size: 80,
+                          onImageUploaded: _updateProfileImage,
+                          showEditIcon: true,
+                        ),
                   const SizedBox(width: 16),
                   // User info
                   Expanded(
@@ -4830,7 +5203,7 @@ class _ProfileTabState extends State<ProfileTab> {
                             style: const TextStyle(
                               fontSize: 24,
                               fontWeight: FontWeight.bold,
-                              color: Color(0xFF2C3E50),
+                              color: Colors.white,
                             ),
                           ),
                         const SizedBox(height: 8),
@@ -4839,7 +5212,7 @@ class _ProfileTabState extends State<ProfileTab> {
                             userProfile?['profile']?['email'] ?? 'No email provided',
                             style: const TextStyle(
                               fontSize: 14,
-                              color: Color(0xFF7F8C8D),
+                              color: Colors.white,
                               fontWeight: FontWeight.w500,
                             ),
                           ),
@@ -4849,7 +5222,7 @@ class _ProfileTabState extends State<ProfileTab> {
                             userProfile?['user']?['phone'] ?? 'No phone provided',
                             style: const TextStyle(
                               fontSize: 14,
-                              color: Color(0xFF7F8C8D),
+                              color: Colors.white,
                               fontWeight: FontWeight.w500,
                             ),
                           ),
@@ -4862,13 +5235,13 @@ class _ProfileTabState extends State<ProfileTab> {
                     icon: Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF3B5BFE).withOpacity(0.1),
+                        color: Colors.white.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Icon(
                         Icons.edit,
                         size: 20,
-                        color: Color(0xFF3B5BFE),
+                        color: Colors.white,
                       ),
                     ),
                   ),
@@ -5015,11 +5388,7 @@ class _ProfileTabState extends State<ProfileTab> {
                     Container(
                 padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [Color(0xFF27AE60), Color(0xFF2ECC71)],
-                  ),
+                  color: const Color(0xFFFF8F00), // Solid Amber
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Column(
@@ -5104,7 +5473,7 @@ class _ProfileTabState extends State<ProfileTab> {
                           onPressed: () => _showAddMoneyBottomSheet(context),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.white,
-                            foregroundColor: const Color(0xFF27AE60),
+                            foregroundColor: const Color(0xFFFF8F00),
                             elevation: 0,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
@@ -5124,7 +5493,7 @@ class _ProfileTabState extends State<ProfileTab> {
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.1),
+                          color: Colors.white.withOpacity(0.15),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Column(
@@ -5192,7 +5561,7 @@ class _ProfileTabState extends State<ProfileTab> {
                   gradient: const LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [Color(0xFFE74C3C), Color(0xFFFF6B6B)],
+                    colors: [Color(0xFF9C27B0), Color(0xFFBA68C8)],
                   ),
                   borderRadius: BorderRadius.circular(16),
                 ),
@@ -5362,7 +5731,7 @@ class _ProfileTabState extends State<ProfileTab> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.7),
+                  color: Colors.white,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Row(
@@ -5412,7 +5781,7 @@ class _ProfileTabState extends State<ProfileTab> {
           ),
           child: Icon(
             icon,
-          color: isLogout ? Colors.red : isDebug ? Colors.orange : const Color(0xFF3B5BFE),
+                              color: isLogout ? Colors.red : isDebug ? Colors.orange : AppColors.primaryBlue,
           size: 24,
           ),
         ),
@@ -5498,7 +5867,7 @@ class _ProfileTabState extends State<ProfileTab> {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
+        color: Colors.white.withOpacity(0.2),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Row(
@@ -5522,7 +5891,7 @@ class _ProfileTabState extends State<ProfileTab> {
                   dateTimeText,
                   style: const TextStyle(
                     fontSize: 10,
-                    color: Colors.white70,
+                    color: Colors.white,
                   ),
                 ),
               ],
@@ -5536,14 +5905,14 @@ class _ProfileTabState extends State<ProfileTab> {
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
-                  color: isCredit ? Colors.green[100] : Colors.red[100],
+                  color: isCredit ? Colors.green[300] : Colors.red[300],
                 ),
               ),
               Text(
                 transaction['method'] ?? transaction['payment_method'] ?? 'Wallet',
                 style: const TextStyle(
                   fontSize: 10,
-                  color: Colors.white70,
+                  color: Colors.white,
                 ),
               ),
             ],
@@ -6058,7 +6427,7 @@ class _OfferBannerCarouselState extends State<OfferBannerCarousel> {
               width: isActive ? 22 : 8,
               height: 8,
               decoration: BoxDecoration(
-                color: isActive ? const Color(0xFF176B5A) : const Color(0xFFBDBDBD),
+                color: isActive ? Colors.white : Colors.white.withOpacity(0.5),
                 borderRadius: BorderRadius.circular(8),
               ),
             );
@@ -6242,7 +6611,7 @@ class _TestPackagesCarouselState extends State<_TestPackagesCarousel> {
           child: isLoading
               ? const Center(
                   child: CircularProgressIndicator(
-                    valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryBlue),
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                   ),
                 )
               : packages.isEmpty
@@ -6287,15 +6656,27 @@ class _TestPackagesCarouselState extends State<_TestPackagesCarousel> {
                     final packageName = pkg['packagename'] ?? 'Package';
                     
                     try {
+                      // Calculate discounted price
+                      final basePrice = double.tryParse(pkg['baseprice']?.toString() ?? '0') ?? 0.0;
+                      final discountValue = double.tryParse(pkg['discountvalue']?.toString() ?? '0') ?? 0.0;
+                      final discountedPrice = basePrice - (basePrice * discountValue / 100);
+                      final discountType = pkg['discounttype']?.toString() ?? pkg['discount_type']?.toString() ?? 'percentage';
+                      
+                      print('🛒 Adding package to cart with original price: $basePrice, discounted price: $discountedPrice');
+                      print('🛒 Discount value: $discountValue, discount type: $discountType');
+                      
                       // Call the actual API to add to cart
                       final apiService = ApiService();
                       final result = await apiService.addToCart(
-                        price: double.tryParse(pkg['baseprice']?.toString() ?? '0') ?? 0.0,
+                        price: basePrice,
                         testName: packageName,
                         labTestId: 'dummy_test_id', // Required but not used when packageId is provided
                         packageId: pkg['id']?.toString() ?? 'default_package_id',
                         preferredDate: null,
                         preferredTime: null,
+                        discountedPrice: discountedPrice,
+                        discountedValue: discountValue,
+                        discountType: discountType,
                       );
                       
                       if (result['success']) {
@@ -6303,12 +6684,10 @@ class _TestPackagesCarouselState extends State<_TestPackagesCarousel> {
                         await widget.onAddToCart(packageName);
                         
                         if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('$packageName added to cart!'),
-                              backgroundColor: Colors.green,
-                              duration: const Duration(seconds: 2),
-                            ),
+                          SnackBarHelper.showSuccess(
+                            context,
+                            '$packageName added to cart!',
+                            duration: const Duration(seconds: 2),
                           );
                         }
                       } else {
@@ -6353,7 +6732,7 @@ class _TestPackagesCarouselState extends State<_TestPackagesCarousel> {
               width: isActive ? 22 : 8,
               height: 8,
               decoration: BoxDecoration(
-                color: isActive ? const Color(0xFF176B5A) : const Color(0xFFBDBDBD),
+                color: isActive ? Colors.white : Colors.white.withOpacity(0.5),
                 borderRadius: BorderRadius.circular(8),
               ),
             );
@@ -6450,7 +6829,7 @@ class _TopDiagnosticsCarouselState extends State<_TopDiagnosticsCarousel> {
           child: isLoading
               ? const Center(
                   child: CircularProgressIndicator(
-                    valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryBlue),
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                   ),
                 )
               : diagnostics.isEmpty
@@ -6549,7 +6928,7 @@ class _TopDiagnosticsCarouselState extends State<_TopDiagnosticsCarousel> {
               width: isActive ? 22 : 8,
               height: 8,
               decoration: BoxDecoration(
-                color: isActive ? const Color(0xFF3B5BFE) : const Color(0xFFBDBDBD),
+                color: isActive ? Colors.white : Colors.white.withOpacity(0.5),
                 borderRadius: BorderRadius.circular(8),
               ),
             );

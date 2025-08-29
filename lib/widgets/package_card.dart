@@ -121,14 +121,14 @@ class _PackageCardState extends State<PackageCard> {
                       children: [
                         Expanded(
                           child: Text(
-                            title,
+                            widget.title,
                             style: const TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
                         ),
-                        if (_shouldShowDiscount(discount))
+                        if (_shouldShowDiscount(widget.discount))
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                             decoration: BoxDecoration(
@@ -136,12 +136,12 @@ class _PackageCardState extends State<PackageCard> {
                               borderRadius: BorderRadius.circular(24),
                             ),
                             child: Text(
-                              '${_formatDiscount(discount)}% Off',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
-                              ),
+                              '${_formatDiscount(widget.discount)}% Off',
+                                                    style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
                             ),
                           ),
                       ],
@@ -150,7 +150,7 @@ class _PackageCardState extends State<PackageCard> {
                     Row(
                       children: [
                         Text(
-                          price,
+                          widget.price,
                           style: const TextStyle(
                             fontWeight: FontWeight.w800,
                             fontSize: 18,
@@ -161,32 +161,32 @@ class _PackageCardState extends State<PackageCard> {
                         const Icon(Icons.check_circle, color: Color(0xFF2ECC71), size: 16),
                         const SizedBox(width: 4),
                         Text(
-                          '$parameters parameters',
-                          style: const TextStyle(
-                            color: Color(0xFF2ECC71),
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
-                          ),
+                          '${widget.parameters} parameters',
+                                                      style: const TextStyle(
+                              color: Color(0xFF2ECC71),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
                         ),
                         const SizedBox(width: 16),
                         const Icon(Icons.science, color: Color(0xFF6C7A89), size: 15),
                         const SizedBox(width: 4),
                         Text(
-                          '$tests tests',
+                          '${widget.tests} tests',
                           style: const TextStyle(
                             color: Colors.grey,
-                            fontSize: 13,
+                            fontSize: 14,
                           ),
                         ),
                         const SizedBox(width: 16),
                         const Icon(Icons.receipt_long, color: Color(0xFF6C7A89), size: 15),
                         const SizedBox(width: 4),
                         Text(
-                          reportTime,
+                          widget.reportTime,
                           style: const TextStyle(
                             color: Color(0xFFFF8C32),
                             fontWeight: FontWeight.bold,
-                            fontSize: 13,
+                            fontSize: 14,
                           ),
                         ),
                       ],
@@ -248,7 +248,7 @@ class _PackageCardState extends State<PackageCard> {
                     widget.title,
                     style: const TextStyle(
                       fontWeight: FontWeight.w700,
-                      fontSize: 17,
+                      fontSize: 19,
                       color: Colors.black,
                     ),
                   ),
@@ -295,7 +295,7 @@ class _PackageCardState extends State<PackageCard> {
                           _isAdded ? 'Added' : '+ Add',
                           style: TextStyle(
                             fontWeight: FontWeight.w600,
-                            fontSize: 14,
+                            fontSize: 15,
                             color: _isAdded ? Colors.white : const Color(0xFF2ECC71),
                           ),
                         ),
@@ -319,7 +319,7 @@ class _PackageCardState extends State<PackageCard> {
                       style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
-                        fontSize: 13,
+                        fontSize: 14,
                       ),
                     ),
                   ),
@@ -331,7 +331,7 @@ class _PackageCardState extends State<PackageCard> {
                         'Starts from ',
                         style: const TextStyle(
                           fontWeight: FontWeight.w500,
-                          fontSize: 12,
+                          fontSize: 13,
                           color: Colors.grey,
                         ),
                       ),
@@ -340,7 +340,7 @@ class _PackageCardState extends State<PackageCard> {
                       widget.price,
                       style: const TextStyle(
                         fontWeight: FontWeight.w800,
-                        fontSize: 20,
+                        fontSize: 22,
                         color: Colors.black,
                       ),
                     ),
@@ -382,7 +382,7 @@ class _PackageCardState extends State<PackageCard> {
                             'Tests Included',
                             style: TextStyle(
                               color: Colors.grey[700],
-                              fontSize: 15,
+                              fontSize: 16,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -396,7 +396,7 @@ class _PackageCardState extends State<PackageCard> {
                             style: const TextStyle(
                               color: Colors.black,
                               fontWeight: FontWeight.bold,
-                              fontSize: 20,
+                              fontSize: 22,
                             ),
                           ),
                           const SizedBox(width: 4),
@@ -427,7 +427,7 @@ class _PackageCardState extends State<PackageCard> {
                             'Reports Within',
                             style: TextStyle(
                               color: Color(0xFF6C7A89),
-                              fontSize: 15,
+                              fontSize: 16,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -438,7 +438,7 @@ class _PackageCardState extends State<PackageCard> {
                         style: const TextStyle(
                           color: Color(0xFFFF8C32),
                           fontWeight: FontWeight.bold,
-                          fontSize: 18,
+                          fontSize: 20,
                         ),
                       ),
                     ],
@@ -460,7 +460,7 @@ class PackageTestCard extends StatelessWidget {
   final bool isInCart;
   final VoidCallback onAddToCart;
   final VoidCallback onRemoveFromCart;
-  final Function(String packageName, String packageId, double price, {String? organizationId, String? organizationName})? onAddToCartApi;
+  final Function(String packageName, String packageId, double originalPrice, {String? organizationId, String? organizationName, double? discountedPrice, double? discountedValue, String? discountType})? onAddToCartApi;
   final Function(String itemId)? onRemoveFromCartApi;
   final bool isLoading;
 
@@ -712,7 +712,7 @@ class PackageTestCard extends StatelessWidget {
                         package['packagename'] ?? package['name'] ?? 'Package',
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
-                          fontSize: 16,
+                          fontSize: 18,
                           color: Colors.black87,
                         ),
                         maxLines: 2,
@@ -732,10 +732,10 @@ class PackageTestCard extends StatelessWidget {
                                   if (_shouldShowStrikeThrough()) ...[
                                     Text(
                                       'Starts from ',
-                                      style: TextStyle(
-                                        color: Colors.grey[500],
-                                        fontSize: 12,
-                                      ),
+                                                                          style: TextStyle(
+                                      color: Colors.grey[500],
+                                      fontSize: 13,
+                                    ),
                                     ),
                                   ],
                                   Text(
@@ -743,7 +743,7 @@ class PackageTestCard extends StatelessWidget {
                                     style: const TextStyle(
                                       color: Color(0xFF2ECC71),
                                       fontWeight: FontWeight.bold,
-                                      fontSize: 16,
+                                      fontSize: 18,
                                     ),
                                   ),
                                 ],
@@ -778,7 +778,7 @@ class PackageTestCard extends StatelessWidget {
                               '${package['tests']?.length ?? 0} Tests',
                               style: const TextStyle(
                                 color: Colors.blue,
-                                fontSize: 10,
+                                fontSize: 11,
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
@@ -803,7 +803,7 @@ class PackageTestCard extends StatelessWidget {
                         'Package',
                         style: TextStyle(
                           color: Colors.orange,
-                          fontSize: 10,
+                          fontSize: 11,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -820,7 +820,7 @@ class PackageTestCard extends StatelessWidget {
                           '${_formatDiscount(package['discountvalue'])}% OFF',
                           style: const TextStyle(
                             color: Color(0xFFFF8C32),
-                            fontSize: 10,
+                            fontSize: 11,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -843,7 +843,7 @@ class PackageTestCard extends StatelessWidget {
                         '${package['tests']?.length ?? 0} Tests',
                         style: TextStyle(
                           color: Colors.grey[700],
-                          fontSize: 12,
+                          fontSize: 13,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -863,7 +863,7 @@ class PackageTestCard extends StatelessWidget {
                       'Reports in 24 Hrs',
                       style: TextStyle(
                         color: Colors.grey[700],
-                        fontSize: 12,
+                        fontSize: 13,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -932,7 +932,12 @@ class PackageTestCard extends StatelessWidget {
                           if (onAddToCartApi != null) {
                             final packageName = package['packagename'] ?? package['name'] ?? 'Package';
                             final packageId = package['id'] ?? '';
-                            final price = double.tryParse(package['baseprice']?.toString() ?? '0') ?? 0.0;
+                            final originalPrice = double.tryParse(package['baseprice']?.toString() ?? '0') ?? 0.0;
+                            final discountedPrice = double.tryParse(package['discountedprice']?.toString() ?? package['baseprice']?.toString() ?? '0') ?? 0.0;
+                            
+                            // Get discount details
+                            final discountedValue = double.tryParse(package['discountvalue']?.toString() ?? '0') ?? 0.0;
+                            final discountType = package['discounttype']?.toString() ?? package['discount_type']?.toString() ?? 'percentage';
                             
                             // Pass organization details as lab_id and lab_name
                             final organizationId = package['organization']?['id']?.toString() ?? '';
@@ -941,9 +946,9 @@ class PackageTestCard extends StatelessWidget {
                             print('🛒 Adding package to cart with existing organization:');
                             print('🛒 Package: $packageName (ID: $packageId)');
                             print('🛒 Organization: $organizationName (ID: $organizationId)');
-                            print('🛒 Price: $price');
+                            print('🛒 Original Price: $originalPrice, Discounted Price: $discountedPrice');
                             
-                            await onAddToCartApi!(packageName, packageId, price, organizationId: organizationId, organizationName: organizationName);
+                            await onAddToCartApi!(packageName, packageId, originalPrice, organizationId: organizationId, organizationName: organizationName, discountedPrice: discountedPrice, discountedValue: discountedValue, discountType: discountType);
                           }
                           onAddToCart();
                         },
@@ -996,7 +1001,7 @@ class PackageTestCard extends StatelessWidget {
 class _OrganizationSelectionSheet extends StatefulWidget {
   final Map<String, dynamic> package;
   final VoidCallback onAddToCart;
-  final Function(String packageName, String packageId, double price, {String? organizationId, String? organizationName})? onAddToCartApi;
+  final Function(String packageName, String packageId, double originalPrice, {String? organizationId, String? organizationName, double? discountedPrice, double? discountedValue, String? discountType})? onAddToCartApi;
 
   const _OrganizationSelectionSheet({
     required this.package,
@@ -1211,15 +1216,21 @@ class _OrganizationSelectionSheetState extends State<_OrganizationSelectionSheet
         final packageId = widget.package['id'] ?? '';
         final organizationId = organization['id'] ?? '';
         final organizationName = organization['name'] ?? '';
-        final price = double.tryParse(organization['pricing']?['final_price']?.toString() ?? '0') ?? 0.0;
+        final originalPrice = double.tryParse(organization['pricing']?['base_price']?.toString() ?? '0') ?? 0.0;
+        final discountedPrice = double.tryParse(organization['pricing']?['final_price']?.toString() ?? '0') ?? 0.0;
+        
+        // Get discount details from organization pricing
+        final discountedValue = double.tryParse(organization['pricing']?['discount_value']?.toString() ?? '0') ?? 0.0;
+        final discountType = organization['pricing']?['discount_type']?.toString() ?? 'percentage';
         
         // Call API with package ID, organization ID, and organization name
         print('🛒 Adding package to cart with selected organization:');
         print('🛒 Package: $packageName (ID: $packageId)');
         print('🛒 Organization: $organizationName (ID: $organizationId)');
-        print('🛒 Price: $price');
+        print('🛒 Original Price: $originalPrice, Discounted Price: $discountedPrice');
+        print('🛒 Discount value: $discountedValue, discount type: $discountType');
         
-        await widget.onAddToCartApi!(packageName, packageId, price, organizationId: organizationId, organizationName: organizationName);
+        await widget.onAddToCartApi!(packageName, packageId, originalPrice, organizationId: organizationId, organizationName: organizationName, discountedPrice: discountedPrice, discountedValue: discountedValue, discountType: discountType);
         
         // Only call onAddToCart for UI state update, not for API cart refresh
         widget.onAddToCart();

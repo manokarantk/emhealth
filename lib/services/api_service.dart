@@ -167,6 +167,31 @@ class ApiService {
     }
   }
 
+  // Update profile image API
+  Future<Map<String, dynamic>> updateProfileImage({
+    required String imageUrl,
+    BuildContext? context,
+  }) async {
+    try {
+      final headers = await _headers;
+      final response = await http.put(
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.updateProfileImage}'),
+        headers: headers,
+        body: jsonEncode({
+          'profile_image_url': imageUrl,
+        }),
+      );
+
+      return _handleResponse(response, context);
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Network error occurred',
+        'error': e.toString(),
+      };
+    }
+  }
+
   // Get banners API
   Future<Map<String, dynamic>> getBanners({
     int page = 1,
@@ -944,6 +969,9 @@ class ApiService {
     String? packageId,
     String? organizationId,
     String? organizationName,
+    double? discountedPrice,
+    double? discountedValue,
+    String? discountType,
   }) async {
     try {
       final headers = await _headers;
@@ -957,6 +985,9 @@ class ApiService {
         if (packageId != null) 'lab_package_id': packageId,
         if (organizationId != null) 'lab_id': organizationId,
         if (organizationId != null) 'lab_name': organizationName,
+        if (discountedPrice != null) 'discounted_price': discountedPrice,
+        if (discountedValue != null) 'discounted_value': discountedValue,
+        if (discountType != null) 'discount_type': discountType,
       };
       
       print('🔄 Add to Cart API Request Body: ${jsonEncode(requestBody)}');

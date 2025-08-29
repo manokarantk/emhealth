@@ -199,19 +199,19 @@ class _SingleLabSchedulingScreenState extends State<SingleLabSchedulingScreen> {
     final services = List<Map<String, dynamic>>.from(widget.selectedLab['services'] ?? []);
     
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F9FB),
+      backgroundColor: AppColors.primaryBlue,
       appBar: AppBar(
         title: const Text(
           'Schedule Your Appointment',
           style: TextStyle(
             fontWeight: FontWeight.bold,
-            color: Colors.black,
+            color: Colors.white,
           ),
         ),
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.primaryBlue,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
       ),

@@ -75,25 +75,25 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
+      backgroundColor: AppColors.primaryBlue,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.primaryBlue,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppColors.primaryBlue),
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: const Text(
           'Order Details',
           style: TextStyle(
-            color: AppColors.primaryBlue,
+            color: Colors.white,
             fontWeight: FontWeight.bold,
           ),
         ),
         actions: [
           if (appointmentData != null) ...[
             IconButton(
-              icon: const Icon(Icons.share, color: AppColors.primaryBlue),
+              icon: const Icon(Icons.share, color: Colors.white),
               onPressed: () {
                 // TODO: Share order details
               },
@@ -109,7 +109,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     if (isLoading) {
       return const Center(
         child: CircularProgressIndicator(
-          valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryBlue),
+          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
         ),
       );
     }
@@ -245,14 +245,14 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Date: ${appointment['appointment_date'] ?? 'N/A'}',
+                    'Date: ${_formatAppointmentDate(appointment['appointment_datetime'])}',
                     style: const TextStyle(
                       fontSize: 14,
                       color: Colors.grey,
                     ),
                   ),
                   Text(
-                    'Time: ${appointment['appointment_time'] ?? 'N/A'}',
+                    'Time: ${_formatAppointmentTime(appointment['appointment_datetime'])}',
                     style: const TextStyle(
                       fontSize: 14,
                       color: Colors.grey,
@@ -313,13 +313,13 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        // boxShadow: [
+        //   BoxShadow(
+        //     color: Colors.black.withOpacity(0.05),
+        //     blurRadius: 10,
+        //     offset: const Offset(0, 4),
+        //   ),
+        // ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -335,7 +335,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           const SizedBox(height: 16),
           _buildInfoRow('Appointment ID', appointment['appointment_id'] ?? 'N/A'),
           _buildInfoRow('Appointment Alias', appointment['appointment_alias'] ?? 'N/A'),
-          _buildInfoRow('Date & Time', '${appointment['appointment_date']} at ${appointment['appointment_time']}'),
+          _buildInfoRow('Date & Time', '${_formatAppointmentDate(appointment['appointment_datetime'])} at ${_formatAppointmentTime(appointment['appointment_datetime'])}'),
           _buildInfoRow('Status', appointment['status']['status_name'] ?? 'N/A'),
           if (appointment['notes'] != null && appointment['notes'].toString().isNotEmpty)
             _buildInfoRow('Notes', appointment['notes']),
@@ -643,7 +643,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.grey[50],
+        color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.grey[200]!),
       ),
@@ -672,7 +672,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      isPackage ? item['package_name'] : item['test_name'],
+                      item['test_name'] ?? item['package_name'] ?? 'Unknown',
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
@@ -689,7 +689,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                         ),
                       ),
                     ],
-                    if (!isPackage && item['test_code'] != null) ...[
+                    if (item['test_code'] != null) ...[
                       const SizedBox(height: 4),
                       Text(
                         'Code: ${item['test_code']}',
@@ -707,7 +707,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    '₹${item['price']}',
+                    '₹${item['price'] ?? 0}',
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -1010,7 +1010,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.grey[50],
+        color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.grey[200]!),
       ),
@@ -1175,6 +1175,33 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       return '${date.year}';
     } catch (e) {
       return dateString;
+    }
+  }
+
+  String _formatAppointmentDate(String? dateTimeString) {
+    if (dateTimeString == null) return 'N/A';
+    try {
+      final dateTime = DateTime.parse(dateTimeString);
+      return '${dateTime.day.toString().padLeft(2, '0')}/${dateTime.month.toString().padLeft(2, '0')}/${dateTime.year}';
+    } catch (e) {
+      return 'N/A';
+    }
+  }
+
+  String _formatAppointmentTime(String? dateTimeString) {
+    if (dateTimeString == null) return 'N/A';
+    try {
+      final dateTime = DateTime.parse(dateTimeString);
+      final hour = dateTime.hour;
+      final minute = dateTime.minute.toString().padLeft(2, '0');
+      
+      // Convert to 12-hour format
+      final period = hour >= 12 ? 'PM' : 'AM';
+      final displayHour = hour == 0 ? 12 : (hour > 12 ? hour - 12 : hour);
+      
+      return '${displayHour.toString().padLeft(2, '0')}:$minute $period';
+    } catch (e) {
+      return 'N/A';
     }
   }
 }

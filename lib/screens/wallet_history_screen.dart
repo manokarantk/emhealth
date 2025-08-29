@@ -9,17 +9,24 @@ class WalletHistoryScreen extends StatefulWidget {
   State<WalletHistoryScreen> createState() => _WalletHistoryScreenState();
 }
 
-class _WalletHistoryScreenState extends State<WalletHistoryScreen> {
+class _WalletHistoryScreenState extends State<WalletHistoryScreen> with SingleTickerProviderStateMixin {
   List<Map<String, dynamic>> transactions = [];
   bool isLoading = true;
   String? errorMessage;
-  String _selectedFilter = 'All';
   Map<String, dynamic>? walletData;
+  late TabController _tabController;
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 3, vsync: this);
     _loadWalletHistory();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadWalletHistory() async {
@@ -57,12 +64,8 @@ class _WalletHistoryScreenState extends State<WalletHistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final filteredTransactions = _selectedFilter == 'All' 
-        ? transactions 
-        : transactions.where((t) => t['type'] == _selectedFilter).toList();
-
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
+      backgroundColor: AppColors.primaryBlue,
       appBar: AppBar(
         title: const Text(
           'Wallet History',
@@ -80,34 +83,36 @@ class _WalletHistoryScreenState extends State<WalletHistoryScreen> {
       ),
       body: Column(
         children: [
-          // Filter Section
+          // Tab Bar Section
           Container(
-            padding: const EdgeInsets.all(16),
-            color: Colors.white,
-            child: Row(
-              children: [
-                const Text(
-                  'Filter: ',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        _buildFilterChip('All'),
-                        const SizedBox(width: 8),
-                        _buildFilterChip('Credit'),
-                        const SizedBox(width: 8),
-                        _buildFilterChip('Debit'),
-                      ],
-                    ),
-                  ),
-                ),
+            margin: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white.withOpacity(0.2)),
+            ),
+            child: TabBar(
+              controller: _tabController,
+              indicator: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                color: AppColors.primaryBlue,
+              ),
+              labelColor: Colors.white,
+              unselectedLabelColor: AppColors.primaryBlue,
+              labelStyle: const TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 16,
+              ),
+              unselectedLabelStyle: const TextStyle(
+                fontWeight: FontWeight.w500,
+                fontSize: 16,
+              ),
+              dividerColor: Colors.transparent,
+              indicatorSize: TabBarIndicatorSize.tab,
+              tabs: const [
+                Tab(text: 'All'),
+                Tab(text: 'Credit'),
+                Tab(text: 'Debit'),
               ],
             ),
           ),
@@ -162,51 +167,54 @@ class _WalletHistoryScreenState extends State<WalletHistoryScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        CircularProgressIndicator(),
+                        CircularProgressIndicator(
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
                         SizedBox(height: 16),
-                        Text('Loading wallet history...'),
+                        Text(
+                          'Loading wallet history...',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
                       ],
                     ),
                   )
-                : filteredTransactions.isEmpty
-                    ? _buildEmptyState()
-                    : ListView.builder(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: filteredTransactions.length,
-                        itemBuilder: (context, index) {
-                          final transaction = filteredTransactions[index];
-                          return _buildTransactionCard(transaction);
-                        },
-                      ),
+                : TabBarView(
+                    controller: _tabController,
+                    children: [
+                      // All Transactions Tab
+                      _buildTransactionsTab('All'),
+                      // Credit Transactions Tab
+                      _buildTransactionsTab('Credit'),
+                      // Debit Transactions Tab
+                      _buildTransactionsTab('Debit'),
+                    ],
+                  ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildFilterChip(String filter) {
-    final isSelected = _selectedFilter == filter;
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _selectedFilter = filter;
-        });
+  Widget _buildTransactionsTab(String filter) {
+    final filteredTransactions = filter == 'All' 
+        ? transactions 
+        : transactions.where((t) => t['type'] == filter).toList();
+
+    if (filteredTransactions.isEmpty) {
+      return _buildEmptyState();
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: filteredTransactions.length,
+      itemBuilder: (context, index) {
+        final transaction = filteredTransactions[index];
+        return _buildTransactionCard(transaction);
       },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? AppColors.primaryBlue : Colors.grey[200],
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          filter,
-          style: TextStyle(
-            color: isSelected ? Colors.white : Colors.black87,
-            fontWeight: FontWeight.w600,
-            fontSize: 14,
-          ),
-        ),
-      ),
     );
   }
 
@@ -363,15 +371,15 @@ class _WalletHistoryScreenState extends State<WalletHistoryScreen> {
           Icon(
             Icons.account_balance_wallet_outlined,
             size: 80,
-            color: Colors.grey[400],
+            color: Colors.white.withOpacity(0.7),
           ),
           const SizedBox(height: 16),
-          Text(
+          const Text(
             'No Transactions Found',
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
-              color: Colors.grey[600],
+              color: Colors.white,
             ),
           ),
           const SizedBox(height: 8),
@@ -379,7 +387,7 @@ class _WalletHistoryScreenState extends State<WalletHistoryScreen> {
             'Your transaction history will appear here',
             style: TextStyle(
               fontSize: 16,
-              color: Colors.grey[500],
+              color: Colors.white.withOpacity(0.8),
             ),
           ),
         ],

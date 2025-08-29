@@ -914,19 +914,19 @@ class _LabWiseSummaryScreenState extends State<LabWiseSummaryScreen> {
         }
       },
       child: Scaffold(
-      backgroundColor: const Color(0xFFF7F9FB),
+      backgroundColor: AppColors.primaryBlue,
       appBar: AppBar(
         title: const Text(
           'Summary and Schedule',
           style: TextStyle(
             fontWeight: FontWeight.bold,
-            color: Colors.black,
+            color: Colors.white,
           ),
         ),
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.primaryBlue,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
       ),
@@ -934,7 +934,7 @@ class _LabWiseSummaryScreenState extends State<LabWiseSummaryScreen> {
         children: [
           // Simple header with pricing
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: labServices.isEmpty
                 ? Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -1007,14 +1007,12 @@ class _LabWiseSummaryScreenState extends State<LabWiseSummaryScreen> {
           // Final amount display (only when cart has items)
           if (!labServices.isEmpty) ...[
             Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16),
+              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [const Color(0xFF059669).withOpacity(0.1), const Color(0xFF059669).withOpacity(0.05)],
-                ),
+                //color: Colors.white,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFF059669).withOpacity(0.2)),
+                border: Border.all(color: Colors.grey.withOpacity(0.2)),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1024,12 +1022,12 @@ class _LabWiseSummaryScreenState extends State<LabWiseSummaryScreen> {
                       Container(
                         padding: const EdgeInsets.all(6),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF059669),
+                          color: AppColors.white,
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: const Icon(
                           Icons.payment,
-                          color: Colors.white,
+                          color: AppColors.primaryBlue,
                           size: 16,
                         ),
                       ),
@@ -1039,7 +1037,7 @@ class _LabWiseSummaryScreenState extends State<LabWiseSummaryScreen> {
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF1E293B),
+                          color: AppColors.white,
                         ),
                       ),
                     ],
@@ -1049,7 +1047,7 @@ class _LabWiseSummaryScreenState extends State<LabWiseSummaryScreen> {
                     style: const TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.w800,
-                      color: Color(0xFF059669),
+                      color: AppColors.white,
                     ),
                   ),
                 ],
@@ -1064,7 +1062,7 @@ class _LabWiseSummaryScreenState extends State<LabWiseSummaryScreen> {
             child: ElevatedButton(
               onPressed: labServices.isEmpty ? null : _proceedToCheckout,
               style: ElevatedButton.styleFrom(
-                backgroundColor: labServices.isEmpty ? Colors.grey : AppColors.primaryBlue,
+                backgroundColor: labServices.isEmpty ? Colors.grey : AppColors.white,
                 foregroundColor: Colors.white,
                 minimumSize: const Size(double.infinity, 50),
                 shape: RoundedRectangleBorder(
@@ -1076,6 +1074,7 @@ class _LabWiseSummaryScreenState extends State<LabWiseSummaryScreen> {
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
+                  color: AppColors.primaryBlue,
                 ),
               ),
             ),
@@ -1198,11 +1197,11 @@ class _LabWiseSummaryScreenState extends State<LabWiseSummaryScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Lab header with primary blue background
+          // Lab header with white background
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: AppColors.primaryBlue,
+              color: Colors.white,
               borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(16),
                 topRight: Radius.circular(16),
@@ -1213,17 +1212,17 @@ class _LabWiseSummaryScreenState extends State<LabWiseSummaryScreen> {
               children: [
                 Row(
                   children: [
-                    Container(
+                                        Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
+                        color: AppColors.primaryBlue.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                                                       child: Icon(
-                                   Icons.local_hospital,
-                                   color: Colors.white,
-                                   size: 24,
-                                 ),
+                      child: Icon(
+                        Icons.local_hospital,
+                        color: AppColors.primaryBlue,
+                        size: 24,
+                      ),
                     ),
                     const SizedBox(width: 16),
                     Expanded(
@@ -1235,7 +1234,7 @@ class _LabWiseSummaryScreenState extends State<LabWiseSummaryScreen> {
                             style: const TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
-                              color: Colors.white,
+                              color: AppColors.primaryBlue,
                             ),
                           ),
                           const SizedBox(height: 4),
@@ -1243,7 +1242,7 @@ class _LabWiseSummaryScreenState extends State<LabWiseSummaryScreen> {
                             '$testCount Tests • $packageCount Packages',
                             style: TextStyle(
                               fontSize: 14,
-                              color: Colors.white.withOpacity(0.9),
+                              color: AppColors.primaryBlue.withOpacity(0.8),
                             ),
                           ),
                         ],
@@ -2453,19 +2452,31 @@ class _AddMoreItemsBottomSheetState extends State<_AddMoreItemsBottomSheet> {
     });
 
     try {
-      final price = double.tryParse(item['baseprice']?.toString() ?? '0') ?? 0.0;
+      // Get both original and discounted prices
+      final originalPrice = double.tryParse(item['baseprice']?.toString() ?? '0') ?? 0.0;
+      final discountedPrice = double.tryParse(item['discountedprice']?.toString() ?? item['baseprice']?.toString() ?? '0') ?? 0.0;
+      
+      // Get discount details
+      final discountedValue = double.tryParse(item['discountvalue']?.toString() ?? '0') ?? 0.0;
+      final discountType = item['discounttype']?.toString() ?? item['discount_type']?.toString() ?? 'percentage';
+      
+      print('🛒 Adding item to cart with original price: $originalPrice, discounted price: $discountedPrice');
+      print('🛒 Discount value: $discountedValue, discount type: $discountType');
       
       // For organization-specific tests, use test_id for lab_test_id key
       final labTestId = isPackage ? '' : (item['test_id']?.toString() ?? item['id']?.toString() ?? '');
       final packageId = isPackage ? (item['package_id']?.toString() ?? '') : null;
 
       final result = await _apiService.addToCart(
-        price: price,
+        price: originalPrice,
         testName: itemName,
         labTestId: labTestId,
         packageId: packageId,
         organizationId: widget.labId,
         organizationName: widget.labName,
+        discountedPrice: discountedPrice,
+        discountedValue: discountedValue,
+        discountType: discountType,
       );
 
       if (result['success']) {

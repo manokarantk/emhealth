@@ -254,7 +254,7 @@ class _PackagesListTabState extends State<PackagesListTab> {
     }
   }
 
-  Future<void> _addToCartApi(String packageName, String packageId, double price, {String? organizationId, String? organizationName}) async {
+  Future<void> _addToCartApi(String packageName, String packageId, double originalPrice, {String? organizationId, String? organizationName, double? discountedPrice, double? discountedValue, String? discountType}) async {
     // Set loading state for this specific package using package ID
     setState(() {
       loadingStates[packageId] = true;
@@ -263,12 +263,15 @@ class _PackagesListTabState extends State<PackagesListTab> {
     try {
       final apiService = ApiService();
       final result = await apiService.addToCart(
-        price: price,
+        price: originalPrice,
         testName: packageName,
         labTestId: packageId,
         packageId: packageId,
         organizationId: organizationId,
         organizationName: organizationName,
+        discountedPrice: discountedPrice,
+        discountedValue: discountedValue,
+        discountType: discountType,
       );
       
       if (result['success']) {
@@ -446,13 +449,13 @@ class _PackagesListTabState extends State<PackagesListTab> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF2ECC71)),
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
             ),
             const SizedBox(height: 16),
             Text(
               'Searching packages...',
               style: TextStyle(
-                color: Colors.grey[600],
+                color: Colors.white,
                 fontSize: 16,
               ),
             ),
@@ -468,13 +471,13 @@ class _PackagesListTabState extends State<PackagesListTab> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF2ECC71)),
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
             ),
             const SizedBox(height: 16),
             Text(
               'Loading packages...',
               style: TextStyle(
-                color: Colors.grey[600],
+                color: Colors.white,
                 fontSize: 16,
               ),
             ),
@@ -521,8 +524,8 @@ class _PackagesListTabState extends State<PackagesListTab> {
 
     return RefreshIndicator(
       onRefresh: () => _resetPagination(),
-      color: const Color(0xFF2ECC71),
-      backgroundColor: Colors.white,
+      color: Colors.white,
+      backgroundColor: AppColors.primaryBlue,
       child: ListView.builder(
         controller: _scrollController,
         padding: const EdgeInsets.all(16),
@@ -535,7 +538,7 @@ class _PackagesListTabState extends State<PackagesListTab> {
               padding: const EdgeInsets.all(16),
               child: const Center(
                 child: CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF2ECC71)),
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                 ),
               ),
             );
@@ -543,14 +546,15 @@ class _PackagesListTabState extends State<PackagesListTab> {
           
           final package = displayPackages[index];
           final packageId = package['id']?.toString() ?? '';
-          // Use package ID for cart selection - cart system now uses IDs internally
-          final isInCart = widget.cartItems.contains(packageId);
+          final packageName = package['packagename'] ?? package['name'] ?? 'Package';
+          // Use package name for cart selection - cart system uses names
+          final isInCart = widget.cartItems.contains(packageName);
           
           return PackageTestCard(
             package: package,
             isInCart: isInCart,
-            onAddToCart: () async => await widget.onAddToCart(packageId),
-            onRemoveFromCart: () async => await widget.onRemoveFromCart(packageId),
+            onAddToCart: () async => await widget.onAddToCart(packageName),
+            onRemoveFromCart: () async => await widget.onRemoveFromCart(packageName),
             onAddToCartApi: _addToCartApi,
             onRemoveFromCartApi: _removeFromCartApi,
             isLoading: loadingStates[packageId] ?? false,

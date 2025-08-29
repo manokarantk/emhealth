@@ -5,7 +5,7 @@ class TestCard extends StatelessWidget {
   final bool isInCart;
   final VoidCallback onAddToCart;
   final VoidCallback onRemoveFromCart;
-  final Function(String testName, String labTestId, double price)? onAddToCartApi;
+  final Function(String testName, String labTestId, double originalPrice, {double? discountedPrice, double? discountedValue, String? discountType})? onAddToCartApi;
   final Function(String itemId)? onRemoveFromCartApi;
   final bool isLoading;
 
@@ -172,9 +172,12 @@ class TestCard extends StatelessWidget {
                              if (onAddToCartApi != null) {
                                final testName = test['testname'] ?? test['name'] ?? 'Test';
                                final labTestId = test['id'] ?? '';
-                               final price = double.tryParse(test['baseprice']?.toString() ?? '0') ?? 0.0;
+                               final originalPrice = double.tryParse(test['baseprice']?.toString() ?? '0') ?? 0.0;
+                               final discountedPrice = double.tryParse(test['discountedprice']?.toString() ?? test['baseprice']?.toString() ?? '0') ?? 0.0;
+                               final discountedValue = double.tryParse(test['discountvalue']?.toString() ?? '0') ?? 0.0;
+                               final discountType = test['discounttype']?.toString() ?? test['discount_type']?.toString() ?? 'percentage';
                                
-                               await onAddToCartApi!(testName, labTestId, price);
+                               await onAddToCartApi!(testName, labTestId, originalPrice, discountedPrice: discountedPrice, discountedValue: discountedValue, discountType: discountType);
                              }
                              onAddToCart();
                            },

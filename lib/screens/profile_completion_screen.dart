@@ -4,6 +4,7 @@ import '../constants/colors.dart';
 import '../services/api_service.dart';
 import '../constants/api_config.dart';
 import '../services/token_service.dart';
+import 'location_selection_screen.dart';
 
 class ProfileCompletionScreen extends StatefulWidget {
   const ProfileCompletionScreen({super.key});
@@ -375,134 +376,22 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
 
   /// Show searchable city selection dialog
   void _showCitySearchDialog() {
-    String searchQuery = '';
-    List<String> filteredCities = List.from(_cities);
-    
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text(
-                'Select Your City',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              content: SizedBox(
-                width: double.maxFinite,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Search TextField
-                    TextField(
-                      autofocus: true,
-                      decoration: InputDecoration(
-                        hintText: 'Search cities...',
-                        prefixIcon: const Icon(Icons.search, color: Colors.grey),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: Colors.grey[300]!),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: Colors.grey[300]!),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: AppColors.primaryBlue, width:2),
-                        ),
-                        filled: true,
-                        fillColor: Colors.grey[50],
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      ),
-                      onChanged: (value) {
-                        setDialogState(() {
-                          searchQuery = value;
-                          filteredCities = _cities
-                              .where((city) => city.toLowerCase().contains(value.toLowerCase()))
-                              .toList();
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    // Cities List
-                    Container(
-                      constraints: const BoxConstraints(maxHeight: 300),
-                      child: filteredCities.isEmpty
-                          ? const Center(
-                              child: Padding(
-                                padding: EdgeInsets.all(20),
-                                child: Text(
-                                  'No cities found',
-                                  style: TextStyle(
-                                    color: Colors.grey,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                              ),
-                            )
-                          : ListView.builder(
-                              shrinkWrap: true,
-                              itemCount: filteredCities.length,
-                              itemBuilder: (context, index) {
-                                final city = filteredCities[index];
-                                final isSelected = _selectedCity == city;
-                                
-                                return ListTile(
-                                  title: Text(
-                                    city,
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      color: isSelected ? AppColors.primaryBlue : Colors.black87,
-                                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                                    ),
-                                  ),
-                                  leading: Icon(
-                                    isSelected ? Icons.check_circle : Icons.location_city,
-                                    color: isSelected ? AppColors.primaryBlue : Colors.grey,
-                                    size: 20,
-                                  ),
-                                  onTap: () {
-                                    setState(() {
-                                      _selectedCity = city;
-                                      if (city != 'Other') {
-                                        _cityController.text = city;
-                                      } else {
-                                        _cityController.text = '';
-                                      }
-                                    });
-                                    Navigator.of(context).pop();
-                                  },
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                );
-                              },
-                            ),
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text(
-                    'Cancel',
-                    style: TextStyle(
-                      color: Colors.grey,
-                      fontSize: 16,
-                    ),
-                  ),
-                ),
-              ],
-            );
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => LocationSelectionScreen(
+          currentLocation: _selectedCity,
+          onLocationSelected: (String city) {
+            setState(() {
+              _selectedCity = city;
+              if (city != 'Other') {
+                _cityController.text = city;
+              } else {
+                _cityController.text = '';
+              }
+            });
           },
-        );
-      },
+        ),
+      ),
     );
   }
 

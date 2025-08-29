@@ -340,7 +340,8 @@ class _MultiLabCheckoutScreenState extends State<MultiLabCheckoutScreen> {
 
   // Check if payment methods should be disabled (when wallet covers full amount)
   bool get shouldDisablePaymentMethods {
-    return walletCoversFullAmount && useWalletBalance;
+    // Allow partial wallet payments - don't disable payment methods
+    return false;
   }
 
   // Apply coupon
@@ -763,27 +764,27 @@ class _MultiLabCheckoutScreenState extends State<MultiLabCheckoutScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: AppColors.primaryBlue,
       appBar: AppBar(
         title: const Text(
           'Checkout',
           style: TextStyle(
             fontWeight: FontWeight.w700,
             fontSize: 20,
-            color: Color(0xFF1E293B),
+            color: Colors.white,
           ),
         ),
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.primaryBlue,
         elevation: 0,
         shadowColor: Colors.transparent,
         leading: Container(
           margin: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: const Color(0xFFF1F5F9),
+            color: Colors.white.withOpacity(0.2),
             borderRadius: BorderRadius.circular(12),
           ),
           child: IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new, color: Color(0xFF64748B), size: 20),
+            icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 20),
             onPressed: () => Navigator.pop(context),
           ),
         ),
@@ -897,7 +898,7 @@ class _MultiLabCheckoutScreenState extends State<MultiLabCheckoutScreen> {
                     gradient: LinearGradient(
                       colors: isBooking 
                           ? [const Color(0xFF94A3B8), const Color(0xFF94A3B8)]
-                          : [AppColors.primaryBlue, const Color(0xFF1E40AF)],
+                          : [AppColors.primaryBlue, AppColors.primaryBlue],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
@@ -2087,6 +2088,39 @@ class _MultiLabCheckoutScreenState extends State<MultiLabCheckoutScreen> {
                     ),
                   ),
                 ),
+                
+                // Show discount notification for Pay at Collection
+                if (selectedPaymentMethod == 'Cash on Collection') ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange[50],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange[200]!),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          color: Colors.orange[700],
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Discounts are only applicable for online payments',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.orange[700],
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 
                 // Wallet balance option (always show)
                 ...[

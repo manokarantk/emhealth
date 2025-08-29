@@ -284,7 +284,7 @@ class _MedicalHistoryScreenState extends State<MedicalHistoryScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
+      backgroundColor: AppColors.primaryBlue,
       appBar: AppBar(
         title: const Text(
           'Medical History',
@@ -462,15 +462,15 @@ class _MedicalHistoryScreenState extends State<MedicalHistoryScreen> {
           Icon(
             Icons.folder_open,
             size: 80,
-            color: Colors.grey[400],
+            color: Colors.white.withOpacity(0.7),
           ),
           const SizedBox(height: 16),
           Text(
             'No Medical Records',
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
-              color: Colors.grey[600],
+              color: Colors.white,
             ),
           ),
           const SizedBox(height: 8),
@@ -478,7 +478,7 @@ class _MedicalHistoryScreenState extends State<MedicalHistoryScreen> {
             'Add your first medical record to get started',
             style: TextStyle(
               fontSize: 16,
-              color: Colors.grey[500],
+              color: Colors.white.withOpacity(0.8),
             ),
           ),
           const SizedBox(height: 24),

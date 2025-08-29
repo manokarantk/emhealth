@@ -763,7 +763,7 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
+      backgroundColor: AppColors.primaryBlue,
       appBar: AppBar(
         title: const Text(
           'Family Members',
@@ -801,6 +801,7 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
+                      color: Colors.white,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -808,7 +809,7 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
                     'Please wait while we fetch your family members',
                     style: TextStyle(
                       fontSize: 14,
-                      color: Colors.grey[600],
+                      color: Colors.white.withOpacity(0.8),
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -823,14 +824,14 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
                       Icon(
                         Icons.error_outline,
                         size: 64,
-                        color: Colors.grey[400],
+                        color: Colors.white.withOpacity(0.7),
                       ),
                       const SizedBox(height: 16),
                       Text(
                         errorMessage!,
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 16,
-                          color: Colors.grey[600],
+                          color: Colors.white,
                         ),
                         textAlign: TextAlign.center,
                       ),
@@ -854,7 +855,7 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
                           Icon(
                             Icons.family_restroom,
                             size: 64,
-                            color: Colors.grey[400],
+                            color: Colors.white.withOpacity(0.7),
                           ),
                           const SizedBox(height: 16),
                           const Text(
@@ -862,7 +863,7 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
                             style: TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.bold,
-                              color: Colors.grey,
+                              color: Colors.white,
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -870,7 +871,7 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
                             'Add your family members to get started',
                             style: TextStyle(
                               fontSize: 16,
-                              color: Colors.grey[600],
+                              color: Colors.white.withOpacity(0.8),
                             ),
                             textAlign: TextAlign.center,
                           ),

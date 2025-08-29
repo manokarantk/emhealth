@@ -321,7 +321,7 @@ class _AddressesScreenState extends State<AddressesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
+      backgroundColor: AppColors.primaryBlue,
       appBar: AppBar(
         title: const Text(
           'My Addresses',
@@ -365,6 +365,7 @@ class _AddressesScreenState extends State<AddressesScreen> {
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
+                      color: Colors.white,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -372,7 +373,7 @@ class _AddressesScreenState extends State<AddressesScreen> {
                     'Please wait while we fetch your addresses',
                     style: TextStyle(
                       fontSize: 14,
-                      color: Colors.grey[600],
+                      color: Colors.white.withOpacity(0.8),
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -387,14 +388,14 @@ class _AddressesScreenState extends State<AddressesScreen> {
                       Icon(
                         Icons.error_outline,
                         size: 64,
-                        color: Colors.grey[400],
+                        color: Colors.white.withOpacity(0.7),
                       ),
                       const SizedBox(height: 16),
                       Text(
                         errorMessage!,
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 16,
-                          color: Colors.grey[600],
+                          color: Colors.white,
                         ),
                         textAlign: TextAlign.center,
                       ),
@@ -418,7 +419,7 @@ class _AddressesScreenState extends State<AddressesScreen> {
                           Icon(
                             Icons.location_on_outlined,
                             size: 64,
-                            color: Colors.grey[400],
+                            color: Colors.white.withOpacity(0.7),
                           ),
                           const SizedBox(height: 16),
                           const Text(
@@ -426,7 +427,7 @@ class _AddressesScreenState extends State<AddressesScreen> {
                             style: TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.bold,
-                              color: Colors.grey,
+                              color: Colors.white,
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -434,7 +435,7 @@ class _AddressesScreenState extends State<AddressesScreen> {
                             'Add your delivery addresses to get started',
                             style: TextStyle(
                               fontSize: 16,
-                              color: Colors.grey[600],
+                              color: Colors.white.withOpacity(0.8),
                             ),
                             textAlign: TextAlign.center,
                           ),

@@ -1,7 +1,7 @@
 class ApiConfig {
   // Base URL
-  //static const String baseUrl = 'http://159.89.173.18:3000/api/v1';
- static const String baseUrl = 'http://localhost:3000/api/v1';
+ static const String baseUrl = 'http://216.48.191.116:3000/api/v1';
+ //static const String baseUrl = 'http://localhost:3000/api/v1';
   
   // Auth endpoints
   static const String requestOtp = '/auth/request-otp';
@@ -12,6 +12,7 @@ class ApiConfig {
   // User endpoints
   static const String profile = '/user/profile';
   static const String updateProfile = '/user/update-profile';
+  static const String updateProfileImage = '/mobile/profile/image';
   static const String completeProfile = '/mobile/profile/complete';
   static const String mobileProfile = '/mobile/profile';
   

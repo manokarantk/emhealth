@@ -55,7 +55,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
         // Fallback: show intro screen if there's an error
         if (mounted) {
           print('DEBUG: Fallback - navigating to intro screen');
-      Navigator.pushReplacementNamed(context, '/intro');
+          Navigator.pushReplacementNamed(context, '/intro');
         }
       }
     });
@@ -69,47 +69,30 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
   @override
   Widget build(BuildContext context) {
+    // Make the logo bigger and ensure it's centered in the screen
     return Scaffold(
       backgroundColor: AppColors.primaryBlue,
       body: Center(
         child: FadeTransition(
           opacity: _animation,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // App Logo
-              Container(
-                width: 120,
-                height: 120,
+          child: SizedBox.expand(
+            child: Center(
+              child: Container(
+                width: 200, // Increased size for bigger logo
+                height: 200,
                 decoration: BoxDecoration(
-                  color: AppColors.white,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: const Icon(
-                  Icons.health_and_safety,
-                  size: 80,
                   color: AppColors.primaryBlue,
+                  borderRadius: BorderRadius.circular(32),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(32),
+                  child: Image.asset(
+                    'assets/applogo.png',
+                    fit: BoxFit.cover,
+                  ),
                 ),
               ),
-              const SizedBox(height: 24),
-              // App Name
-              const Text(
-                'EmHealth',
-                style: TextStyle(
-                  color: AppColors.white,
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Your Health, Our Priority',
-                style: TextStyle(
-                  color: AppColors.white,
-                  fontSize: 16,
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),

@@ -508,18 +508,18 @@ class _LabSelectionScreenState extends State<LabSelectionScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F9FB),
+      backgroundColor: AppColors.primaryBlue,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.primaryBlue,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.black),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: const Text(
           'Select Lab for Test/Scans',
           style: TextStyle(
-            color: Colors.black,
+            color: Colors.white,
             fontWeight: FontWeight.bold,
             fontSize: 20,
           ),
@@ -527,7 +527,7 @@ class _LabSelectionScreenState extends State<LabSelectionScreen> {
         centerTitle: true,
         actions: [
           IconButton(
-            icon: const Icon(Icons.filter_alt_outlined, color: AppColors.primaryBlue),
+            icon: const Icon(Icons.filter_alt_outlined, color: Colors.white),
             onPressed: () {
               _showFilterBottomSheet(context);
             },
@@ -972,8 +972,8 @@ class _LabSelectionScreenState extends State<LabSelectionScreen> {
                 }
               : null,
           style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.primaryBlue,
-            foregroundColor: Colors.white,
+            backgroundColor: Colors.white,
+            foregroundColor: AppColors.primaryBlue,
             padding: const EdgeInsets.symmetric(vertical: 16),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
@@ -985,7 +985,7 @@ class _LabSelectionScreenState extends State<LabSelectionScreen> {
                   height: 20,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryBlue),
                   ),
                 )
               : Text(

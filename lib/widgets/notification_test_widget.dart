@@ -11,36 +11,10 @@ class NotificationTestWidget extends StatefulWidget {
 
 class _NotificationTestWidgetState extends State<NotificationTestWidget> {
   final NotificationService _notificationService = NotificationService();
-  String? _fcmToken;
-  bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    _loadFCMToken();
-  }
-
-  Future<void> _loadFCMToken() async {
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      final token = await _notificationService.getStoredFCMToken();
-      setState(() {
-        _fcmToken = token;
-        _isLoading = false;
-      });
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading FCM token: $e')),
-        );
-      }
-    }
   }
 
   Future<void> _showTestNotification() async {
@@ -68,39 +42,7 @@ class _NotificationTestWidgetState extends State<NotificationTestWidget> {
     }
   }
 
-  Future<void> _subscribeToTopic() async {
-    try {
-      await _notificationService.subscribeToTopic('emhealth_general');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Subscribed to emhealth_general topic!')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error subscribing to topic: $e')),
-        );
-      }
-    }
-  }
 
-  Future<void> _unsubscribeFromTopic() async {
-    try {
-      await _notificationService.unsubscribeFromTopic('emhealth_general');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Unsubscribed from emhealth_general topic!')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error unsubscribing from topic: $e')),
-        );
-      }
-    }
-  }
 
   Future<void> _clearAllNotifications() async {
     try {
@@ -139,7 +81,7 @@ class _NotificationTestWidgetState extends State<NotificationTestWidget> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'Firebase Notification Status',
+                      'Local Notification Status',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
@@ -150,37 +92,6 @@ class _NotificationTestWidgetState extends State<NotificationTestWidget> {
                       'Initialized: ${_notificationService.isInitialized ? "✅ Yes" : "❌ No"}',
                       style: const TextStyle(fontSize: 16),
                     ),
-                    const SizedBox(height: 8),
-                    if (_isLoading)
-                      const CircularProgressIndicator()
-                    else
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'FCM Token:',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.grey[200],
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              _fcmToken ?? 'No token available',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontFamily: 'monospace',
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
                   ],
                 ),
               ),
@@ -210,26 +121,7 @@ class _NotificationTestWidgetState extends State<NotificationTestWidget> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    ElevatedButton.icon(
-                      onPressed: _subscribeToTopic,
-                      icon: const Icon(Icons.add),
-                      label: const Text('Subscribe to Topic'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
-                        foregroundColor: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    ElevatedButton.icon(
-                      onPressed: _unsubscribeFromTopic,
-                      icon: const Icon(Icons.remove),
-                      label: const Text('Unsubscribe from Topic'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.orange,
-                        foregroundColor: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
+
                     ElevatedButton.icon(
                       onPressed: _clearAllNotifications,
                       icon: const Icon(Icons.clear_all),
