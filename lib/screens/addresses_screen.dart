@@ -120,8 +120,9 @@ class _AddressesScreenState extends State<AddressesScreen> {
     AddAddressBottomSheet.show(
           context: context,
       addressToEdit: address,
-      onAddressAdded: () {
+      onAddressAdded: (addressId) {
         _loadAddresses(); // Refresh the list when address is updated
+        // Don't navigate back - stay on addresses page
       },
     );
   }
@@ -129,8 +130,9 @@ class _AddressesScreenState extends State<AddressesScreen> {
   void _showAddAddressDialog() {
     AddAddressBottomSheet.show(
       context: context,
-      onAddressAdded: () {
+      onAddressAdded: (addressId) {
         _loadAddresses(); // Refresh the list when address is added
+        // Don't navigate back - stay on addresses page
       },
     );
   }

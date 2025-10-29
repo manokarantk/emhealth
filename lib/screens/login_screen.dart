@@ -38,6 +38,7 @@ class _LoginScreenState extends State<LoginScreen> {
       });
       
       try {
+        print('DEBUG: Phone number: {phoneNumber}');
         final apiService = ApiService();
         final phoneNumber = '$_selectedCountryCode${_mobileController.text}';
         
@@ -62,6 +63,7 @@ class _LoginScreenState extends State<LoginScreen> {
             );
           }
         } else {
+          print('DEBUG: Failed to send OTP');
           // Show error message
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(

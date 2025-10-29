@@ -5,7 +5,7 @@ class TestCard extends StatelessWidget {
   final bool isInCart;
   final VoidCallback onAddToCart;
   final VoidCallback onRemoveFromCart;
-  final Function(String testName, String labTestId, double originalPrice, {double? discountedPrice, double? discountedValue, String? discountType})? onAddToCartApi;
+  final Future<bool> Function(String testName, String labTestId, double originalPrice, {double? discountedPrice, double? discountedValue, String? discountType})? onAddToCartApi;
   final Function(String itemId)? onRemoveFromCartApi;
   final bool isLoading;
 
@@ -177,9 +177,20 @@ class TestCard extends StatelessWidget {
                                final discountedValue = double.tryParse(test['discountvalue']?.toString() ?? '0') ?? 0.0;
                                final discountType = test['discounttype']?.toString() ?? test['discount_type']?.toString() ?? 'percentage';
                                
-                               await onAddToCartApi!(testName, labTestId, originalPrice, discountedPrice: discountedPrice, discountedValue: discountedValue, discountType: discountType);
+                               try {
+                                 final success = await onAddToCartApi!(testName, labTestId, originalPrice, discountedPrice: discountedPrice, discountedValue: discountedValue, discountType: discountType);
+                                 // Only call onAddToCart if API call was successful
+                                 if (success) {
+                                   onAddToCart();
+                                 }
+                               } catch (e) {
+                                 // If API call fails, don't update UI state
+                                 print('Failed to add to cart: $e');
+                               }
+                             } else {
+                               // If no API call needed, just update UI state
+                               onAddToCart();
                              }
-                             onAddToCart();
                            },
                            style: OutlinedButton.styleFrom(
                              side: const BorderSide(color: Color(0xFF2ECC71)),

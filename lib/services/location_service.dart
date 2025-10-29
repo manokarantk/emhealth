@@ -1,5 +1,6 @@
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter/material.dart';
+import 'storage_service.dart';
 
 class LocationService {
   static final LocationService _instance = LocationService._internal();
@@ -108,5 +109,112 @@ class LocationService {
   /// Check location permission status
   Future<LocationPermission> getLocationPermission() async {
     return await Geolocator.checkPermission();
+  }
+
+  /// Get stored user location from local storage
+  Future<Map<String, dynamic>?> getStoredLocation() async {
+    try {
+      final locationData = await StorageService.getUserLocation();
+      if (locationData != null) {
+        print('📍 LocationService: Retrieved stored location: $locationData');
+        return locationData;
+      }
+      print('📍 LocationService: No stored location found');
+      return null;
+    } catch (e) {
+      print('❌ LocationService: Error getting stored location: $e');
+      return null;
+    }
+  }
+
+  /// Store user location in local storage
+  Future<void> storeLocation(Map<String, dynamic> locationData) async {
+    try {
+      await StorageService.saveUserLocation(locationData);
+      print('📍 LocationService: Location stored successfully: $locationData');
+    } catch (e) {
+      print('❌ LocationService: Error storing location: $e');
+    }
+  }
+
+  /// Get current location and store it locally
+  Future<Map<String, dynamic>> getAndStoreLocation(BuildContext context) async {
+    try {
+      print('📍 LocationService: Getting and storing current location...');
+      
+      final locationResult = await getCurrentLocation(context);
+      
+      if (locationResult['success'] == true) {
+        // Store the location data
+        await storeLocation(locationResult['data']);
+        print('📍 LocationService: Location retrieved and stored successfully');
+      } else {
+        print('❌ LocationService: Failed to get location: ${locationResult['message']}');
+      }
+      
+      return locationResult;
+    } catch (e) {
+      print('❌ LocationService: Error in getAndStoreLocation: $e');
+      return {
+        'success': false,
+        'message': 'Failed to get and store location: ${e.toString()}',
+        'error': e.toString(),
+      };
+    }
+  }
+
+  /// Update stored location (called when user changes location)
+  Future<Map<String, dynamic>> updateStoredLocation(BuildContext context) async {
+    try {
+      print('📍 LocationService: Updating stored location...');
+      
+      final locationResult = await getCurrentLocation(context);
+      
+      if (locationResult['success'] == true) {
+        // Store the new location data
+        await storeLocation(locationResult['data']);
+        print('📍 LocationService: Location updated and stored successfully');
+      } else {
+        print('❌ LocationService: Failed to update location: ${locationResult['message']}');
+      }
+      
+      return locationResult;
+    } catch (e) {
+      print('❌ LocationService: Error in updateStoredLocation: $e');
+      return {
+        'success': false,
+        'message': 'Failed to update stored location: ${e.toString()}',
+        'error': e.toString(),
+      };
+    }
+  }
+
+  /// Get stored location coordinates for API calls
+  Future<Map<String, double>?> getStoredCoordinates() async {
+    try {
+      final locationData = await getStoredLocation();
+      if (locationData != null && 
+          locationData['latitude'] != null && 
+          locationData['longitude'] != null) {
+        return {
+          'latitude': locationData['latitude'].toDouble(),
+          'longitude': locationData['longitude'].toDouble(),
+        };
+      }
+      return null;
+    } catch (e) {
+      print('❌ LocationService: Error getting stored coordinates: $e');
+      return null;
+    }
+  }
+
+  /// Clear stored location
+  Future<void> clearStoredLocation() async {
+    try {
+      await StorageService.clearUserLocation();
+      print('📍 LocationService: Stored location cleared successfully');
+    } catch (e) {
+      print('❌ LocationService: Error clearing stored location: $e');
+    }
   }
 } 

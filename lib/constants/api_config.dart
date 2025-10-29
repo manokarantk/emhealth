@@ -1,7 +1,8 @@
 class ApiConfig {
   // Base URL
- static const String baseUrl = 'http://216.48.191.116:3000/api/v1';
- //static const String baseUrl = 'http://localhost:3000/api/v1';
+  static const String baseUrl = 'http://164.52.213.188:3000/api/v1';
+  // static const String baseUrl = 'http://192.168.29.103:3000/api/v1'; // This won't work from simulator
+ // static const String baseUrl = 'http://159.89.173.18:3010/api/v1';
   
   // Auth endpoints
   static const String requestOtp = '/auth/request-otp';
@@ -9,7 +10,7 @@ class ApiConfig {
   static const String login = '/auth/login';
   static const String register = '/auth/register';
   
-  // User endpoints
+  // User endpointsR
   static const String profile = '/user/profile';
   static const String updateProfile = '/user/update-profile';
   static const String updateProfileImage = '/mobile/profile/image';
@@ -42,9 +43,12 @@ class ApiConfig {
   static const String addresses = '/addresses';
   static const String profileAddresses = '/profile/addresses';
   static const String addAddress = '/profile/addresses';
+  static const String homeCollectionFees = '/mobile/home-collection-fees';
   
   // Medical records endpoints
-  static const String medicalRecords = '/medical-records';
+  static const String medicalRecords = '/mobile/medical-records';
+  static const String updateMedicalRecord = '/mobile/medical-records/';
+  static const String deleteMedicalRecord = '/mobile/medical-records/';
   
   // Coupons endpoints
   static const String coupons = '/coupons';
@@ -94,4 +98,13 @@ class ApiConfig {
   
   // Referral endpoints
   static const String referralStats = '/mobile/referrals/stats';
+  
+  // Enquiry endpoints
+  static const String submitInquiry = '/mobile/inquiries';
+  
+  // Areas endpoints
+  static const String areasSearch = '/mobile/areas/search';
+  
+  // Home collection fee
+  static const double homeCollectionFee = 100.0; // ₹100 home collection fee
 } 

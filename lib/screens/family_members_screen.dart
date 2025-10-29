@@ -278,6 +278,8 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
               duration: const Duration(seconds: 3),
             ),
           );
+          // Return true to indicate a member was updated successfully
+          Navigator.of(context).pop(true);
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -316,6 +318,8 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
               duration: const Duration(seconds: 3),
             ),
           );
+          // Return true to indicate a member was added successfully
+          Navigator.of(context).pop(true);
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -387,6 +391,9 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
   }
 
   void _showAddMemberDialog() {
+    // Prevent multiple simultaneous calls
+    if (_isLoadingRelationships) return;
+    
     // Reset form for add mode
     setState(() {
       _isEditingMember = false;
@@ -396,18 +403,21 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
     _clearForm();
     AddFamilyMemberBottomSheet.show(
       context: context,
-      onMemberAdded: _loadFamilyMembers,
+      onMemberAdded: (memberName) => _loadFamilyMembers(),
     );
   }
 
   void _showMemberFormDialog(String title) {
+    // Prevent multiple simultaneous calls
+    if (_isLoadingRelationships) return;
+    
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (BuildContext context) {
         return Container(
-          height: MediaQuery.of(context).size.height * 0.85,
+          height: (MediaQuery.of(context).size.height * 0.85).clamp(300.0, MediaQuery.of(context).size.height),
           decoration: const BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.only(

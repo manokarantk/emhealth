@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:async';
-import 'dart:convert';
 import '../constants/colors.dart';
 import '../widgets/package_card.dart';
 import '../widgets/tests_list_tab.dart';
@@ -13,16 +12,17 @@ import 'addresses_screen.dart';
 import 'lab_selection_screen.dart';
 import 'order_detail_screen.dart';
 import 'location_selection_screen.dart';
-import '../services/intro_service.dart';
-import '../services/token_service.dart';
 import '../services/api_service.dart';
 import '../services/storage_service.dart';
 import '../services/location_service.dart';
+import '../services/firebase_storage_service.dart';
+import '../services/notification_badge_service.dart';
 import '../utils/auth_utils.dart';
 import '../utils/snackbar_helper.dart';
 import 'package:geolocator/geolocator.dart';
 import '../widgets/add_money_bottom_sheet.dart';
 import '../widgets/profile_image_picker.dart';
+import '../widgets/image_upload_widget.dart';
 
 class LandingPage extends StatefulWidget {
   const LandingPage({super.key});
@@ -35,6 +35,7 @@ class _LandingPageState extends State<LandingPage> {
   Set<String> cartItems = {}; // Track cart items by test name
   bool _isLoadingCart = true;
   Map<String, dynamic> cartData = {};
+  final NotificationBadgeService _notificationBadgeService = NotificationBadgeService();
   
   // Sample test data with prices for cart calculation
   final Map<String, double> testPrices = {
@@ -65,6 +66,13 @@ class _LandingPageState extends State<LandingPage> {
   void initState() {
     super.initState();
     _loadCartItems();
+    _notificationBadgeService.initialize();
+  }
+
+  @override
+  void dispose() {
+    _notificationBadgeService.dispose();
+    super.dispose();
   }
 
 
@@ -141,7 +149,7 @@ class _LandingPageState extends State<LandingPage> {
                 },
                 child: Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
                     color: const Color(0xFF3B5BFE),
                     borderRadius: BorderRadius.circular(12),
@@ -210,30 +218,34 @@ class _LandingPageState extends State<LandingPage> {
                 },
                 child: Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF25D366),
-                    borderRadius: BorderRadius.circular(12),
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF25D366), Color(0xFF128C7E)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
-                        color: const Color(0xFF25D366).withOpacity(0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4),
+                        color: const Color(0xFF25D366).withOpacity(0.4),
+                        blurRadius: 12,
+                        offset: const Offset(0, 6),
                       ),
                     ],
                   ),
                   child: Row(
                     children: [
                       Container(
-                        padding: const EdgeInsets.all(8),
+                        padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
                           color: Colors.white.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(12),
                         ),
                         child: const Icon(
-                          Icons.chat,
+                          Icons.chat_bubble_outline,
                           color: Colors.white,
-                          size: 20,
+                          size: 24,
                         ),
                       ),
                       const SizedBox(width: 16),
@@ -448,17 +460,16 @@ class _LandingPageState extends State<LandingPage> {
         print('Updated cart data: $cartData');
         print('Updated cart items: $items');
         
-        // Extract package/test IDs from cart items to sync local state
+        // Extract package/test names from cart items to sync local state
         final Set<String> serverCartItems = items.map((item) {
-          // Use lab_package_id for packages, lab_test_id for tests, or fallback to item id
-          final packageId = item['lab_package_id']?.toString();
-          final testId = item['lab_test_id']?.toString();
-          final itemId = item['id']?.toString();
+          // Use test_name for tests, package_name for packages
+          final testName = item['test_name']?.toString();
+          final packageName = item['package_name']?.toString();
           
-          return packageId?.isNotEmpty == true ? packageId! :
-                 testId?.isNotEmpty == true ? testId! :
-                 itemId ?? item['test_name'] as String;
-        }).toSet();
+          return testName?.isNotEmpty == true ? testName! :
+                 packageName?.isNotEmpty == true ? packageName! :
+                 item['id']?.toString() ?? '';
+        }).where((name) => name.isNotEmpty).toSet();
         
         setState(() {
           this.cartData = cartData;
@@ -474,6 +485,7 @@ class _LandingPageState extends State<LandingPage> {
       print('❌ CART REFRESH ERROR: $e');
     }
   }
+
 
   List<Widget> get _pages => [
     HomeTab(
@@ -732,7 +744,7 @@ class _HomeTabState extends State<HomeTab> {
         
         // Extract test names and package names from cart items
         final Set<String> serverCartItems = items.map((item) {
-          return (item['test_name'] ?? item['package_name'] ?? 'Unknown Item') as String;
+          return (item['test_name'] ?? item['package_name'] ?? 'Item') as String;
         }).toSet();
         
         setState(() {
@@ -822,7 +834,7 @@ class _HomeTabState extends State<HomeTab> {
         
         // Extract test names and package names from cart items
         final Set<String> serverCartItems = items.map((item) {
-          return (item['test_name'] ?? item['package_name'] ?? 'Unknown Item') as String;
+          return (item['test_name'] ?? item['package_name'] ?? 'Item') as String;
         }).toSet();
         
         setState(() {
@@ -840,254 +852,25 @@ class _HomeTabState extends State<HomeTab> {
   }
 
   /// Show cart summary bottom sheet
-  void _showCartSummaryBottomSheet(BuildContext context) {
+  void _showCartSummaryBottomSheet(BuildContext context) async {
+    // Refresh cart data before showing the bottom sheet
+    await _refreshCartData();
+    
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.7,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.only(
-            topLeft: Radius.circular(20),
-            topRight: Radius.circular(20),
-          ),
-        ),
-        child: Column(
-          children: [
-            // Handle bar
-            Container(
-              margin: const EdgeInsets.only(top: 8),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey[300],
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            
-            // Header
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.shopping_cart,
-                    color: AppColors.primaryBlue,
-                    size: 24,
-                  ),
-                  const SizedBox(width: 12),
-                  const Text(
-                    'Cart Summary',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black,
-                    ),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close),
-                  ),
-                ],
-              ),
-            ),
-            
-            // Cart items list
-            Expanded(
-              child: cartItems.isEmpty
-                  ? const Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.shopping_cart_outlined,
-                            size: 64,
-                            color: Colors.grey,
-                          ),
-                          SizedBox(height: 16),
-                          Text(
-                            'Your cart is empty',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.grey,
-                            ),
-                          ),
-                          SizedBox(height: 8),
-                          Text(
-                            'Add some tests or packages to get started',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey,
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      itemCount: cartData['items']?.length ?? 0,
-                      itemBuilder: (context, index) {
-                        final cartItem = cartData['items'][index];
-                        final itemName = cartItem['test_name'] ?? cartItem['package_name'] ?? 'Unknown Item';
-                        final itemType = cartItem['lab_test_id'] != null ? 'Test' : 'Package';
-                        final itemId = cartItem['id'] ?? cartItem['lab_test_id'] ?? cartItem['lab_package_id'] ?? '';
-                        
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          child: ListTile(
-                            leading: Icon(
-                              itemType == 'Test' ? Icons.science : Icons.inventory,
-                              color: AppColors.primaryBlue,
-                            ),
-                            title: Text(
-                              itemName,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  itemType,
-                                  style: TextStyle(
-                                    color: Colors.grey[600],
-                                    fontSize: 12,
-                                  ),
-                                ),
-                                if (cartItem['price'] != null)
-                                  Text(
-                                    '₹${cartItem['price']}',
-                                    style: const TextStyle(
-                                      color: AppColors.primaryBlue,
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                              ],
-                            ),
-                            trailing: IconButton(
-                              icon: const Icon(
-                                Icons.remove_circle_outline,
-                                color: Colors.red,
-                              ),
-                              onPressed: () async {
-                                // Show loading indicator
-                                showDialog(
-                                  context: context,
-                                  barrierDismissible: false,
-                                  builder: (BuildContext context) {
-                                    return const Center(
-                                      child: CircularProgressIndicator(),
-                                    );
-                                  },
-                                );
-                                
-                                try {
-                                  // Remove from database via API
-                                  final apiService = ApiService();
-                                  final result = await apiService.removeFromCart(itemId);
-                                  
-                                  if (result['success']) {
-                                    // Refresh cart data from API first
-                                    await _refreshCartData();
-                                    
-                                    // Close loading dialog
-                                    Navigator.pop(context);
-                                    
-                                    // Close bottom sheet
-                                    Navigator.pop(context);
-                                    
-                                    // Show success message
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('Item removed from cart successfully'),
-                                        backgroundColor: Colors.green,
-                                        duration: Duration(seconds: 2),
-                                      ),
-                                    );
-                                    
-                                    // Force rebuild of the entire widget tree
-                                    if (mounted) {
-                                      setState(() {});
-                                    }
-                                    
-                                    // Notify parent widget to refresh cart data
-                                    widget.onCartChanged();
-                                    
-                                    // Force parent widget to rebuild
-                                    if (mounted) {
-                                      // Trigger a rebuild of the parent widget
-                                      final parentState = context.findAncestorStateOfType<_LandingPageState>();
-                                      if (parentState != null && parentState.mounted) {
-                                        parentState.setState(() {});
-                                      }
-                                    }
-                                  } else {
-                                    // Close loading dialog
-                                    Navigator.pop(context);
-                                    
-                                    // Show error message
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(result['message'] ?? 'Failed to remove item from cart'),
-                                        backgroundColor: Colors.red,
-                                        duration: const Duration(seconds: 3),
-                                      ),
-                                    );
-                                  }
-                                } catch (e) {
-                                  // Close loading dialog
-                                  Navigator.pop(context);
-                                  
-                                  // Show error message
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text('Error removing item: ${e.toString()}'),
-                                      backgroundColor: Colors.red,
-                                      duration: const Duration(seconds: 3),
-                                    ),
-                                  );
-                                }
-                              },
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-            ),
-            
-            // Proceed button
-            Container(
-              padding: const EdgeInsets.all(20),
-              child: ElevatedButton(
-                onPressed: cartItems.isEmpty ? null : () {
-                  Navigator.pop(context);
-                  _proceedToCheckout(context);
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: cartItems.isEmpty ? Colors.grey : AppColors.primaryBlue,
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size(double.infinity, 50),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: Text(
-                  cartItems.isEmpty ? 'Cart is Empty' : 'Proceed to Checkout',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
+      builder: (context) => _CartSummaryBottomSheet(
+        cartItems: cartItems,
+        cartData: cartData,
+        onCartChanged: () {
+          _refreshCartData();
+          widget.onCartChanged();
+        },
+        onProceedToCheckout: () {
+          Navigator.pop(context);
+          _proceedToCheckout(context);
+        },
       ),
     );
   }
@@ -1282,10 +1065,34 @@ class _HomeTabState extends State<HomeTab> {
       MaterialPageRoute(
         builder: (context) => LocationSelectionScreen(
           currentLocation: selectedCity,
-          onLocationSelected: (String city) {
+          onLocationSelected: (String city) async {
             setState(() {
               selectedCity = city;
             });
+            
+            // Store the selected city location
+            try {
+              final locationService = LocationService();
+              
+              // Get coordinates for the selected city (you might want to add a city-to-coordinates mapping)
+              // For now, we'll use a default location for Tamil Nadu
+              final cityCoordinates = _getCityCoordinates(city);
+              
+              if (cityCoordinates != null) {
+                final locationData = {
+                  'latitude': cityCoordinates['latitude'],
+                  'longitude': cityCoordinates['longitude'],
+                  'city': city,
+                  'timestamp': DateTime.now().toIso8601String(),
+                };
+                
+                await locationService.storeLocation(locationData);
+                print('📍 LandingPage: Location stored for city: $city');
+              }
+            } catch (e) {
+              print('📍 LandingPage: Error storing location for city $city: $e');
+            }
+            
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text('Location changed to $city'),
@@ -1296,6 +1103,77 @@ class _HomeTabState extends State<HomeTab> {
         ),
       ),
     );
+  }
+
+  // Helper method to get coordinates for Tamil Nadu cities
+  Map<String, double>? _getCityCoordinates(String city) {
+    // Tamil Nadu city coordinates (approximate)
+    final Map<String, Map<String, double>> cityCoordinates = {
+      'Chennai': {'latitude': 13.0827, 'longitude': 80.2707},
+      'Coimbatore': {'latitude': 11.0168, 'longitude': 76.9558},
+      'Madurai': {'latitude': 9.9252, 'longitude': 78.1198},
+      'Salem': {'latitude': 11.6643, 'longitude': 78.1460},
+      'Tiruchirappalli': {'latitude': 10.7905, 'longitude': 78.7047},
+      'Vellore': {'latitude': 12.9716, 'longitude': 79.1596},
+      'Erode': {'latitude': 11.3410, 'longitude': 77.7172},
+      'Tiruppur': {'latitude': 11.1085, 'longitude': 77.3411},
+      'Thoothukkudi': {'latitude': 8.7642, 'longitude': 78.1348},
+      'Dindigul': {'latitude': 10.3629, 'longitude': 77.9754},
+      'Thanjavur': {'latitude': 10.7869, 'longitude': 79.1378},
+      'Villupuram': {'latitude': 11.9397, 'longitude': 79.5022},
+      'Cuddalore': {'latitude': 11.7447, 'longitude': 79.7680},
+      'Kanchipuram': {'latitude': 12.8342, 'longitude': 79.7036},
+      'Tiruvannamalai': {'latitude': 12.2279, 'longitude': 79.0625},
+      'Krishnagiri': {'latitude': 12.5186, 'longitude': 78.2137},
+      'Dharmapuri': {'latitude': 12.1271, 'longitude': 78.1579},
+      'Karur': {'latitude': 10.9574, 'longitude': 78.0809},
+      'Namakkal': {'latitude': 11.2213, 'longitude': 78.1652},
+      'Pudukkottai': {'latitude': 10.3827, 'longitude': 78.8214},
+      'Sivaganga': {'latitude': 9.8432, 'longitude': 78.4809},
+      'Ramanathapuram': {'latitude': 9.3697, 'longitude': 78.8344},
+      'Virudhunagar': {'latitude': 9.5852, 'longitude': 77.9574},
+      'Tirunelveli': {'latitude': 8.7139, 'longitude': 77.7567},
+      'Kanyakumari': {'latitude': 8.0883, 'longitude': 77.5385},
+      'Theni': {'latitude': 10.0104, 'longitude': 77.4768},
+      'Ariyalur': {'latitude': 11.1375, 'longitude': 79.0758},
+      'Perambalur': {'latitude': 11.2340, 'longitude': 78.8833},
+      'Nagapattinam': {'latitude': 10.7667, 'longitude': 79.8417},
+      'Tiruvarur': {'latitude': 10.7726, 'longitude': 79.6368},
+      'Thiruvarur': {'latitude': 10.7726, 'longitude': 79.6368}, // Alternative spelling
+    };
+    
+    return cityCoordinates[city];
+  }
+
+  String _formatTimeTo12Hour(String time24) {
+    if (time24.isEmpty) return '';
+    
+    try {
+      // Parse 24-hour format (e.g., "09:00", "14:30")
+      final parts = time24.split(':');
+      if (parts.length != 2) return time24;
+      
+      int hour = int.parse(parts[0]);
+      int minute = int.parse(parts[1]);
+      
+      String period = hour >= 12 ? 'PM' : 'AM';
+      if (hour == 0) {
+        hour = 12;
+      } else if (hour > 12) hour -= 12;
+      
+      return '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')} $period';
+    } catch (e) {
+      return time24; // Return original if parsing fails
+    }
+  }
+
+  String _formatTimeRange(String startTime, String endTime) {
+    if (startTime.isEmpty || endTime.isEmpty) return '';
+    
+    String formattedStart = _formatTimeTo12Hour(startTime);
+    String formattedEnd = _formatTimeTo12Hour(endTime);
+    
+    return '$formattedStart - $formattedEnd';
   }
 
   @override
@@ -1419,7 +1297,7 @@ class _HomeTabState extends State<HomeTab> {
                           _showCartSummaryBottomSheet(context);
                         },
                       ),
-                      if (cartItems.isNotEmpty)
+                      if (_getCartItemCount() > 0)
                         Positioned(
                           right: 8,
                           top: 8,
@@ -1434,7 +1312,7 @@ class _HomeTabState extends State<HomeTab> {
                               minHeight: 16,
                             ),
                             child: Text(
-                              '${cartItems.length}',
+                              '${_getCartItemCount()}',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 10,
@@ -1452,7 +1330,9 @@ class _HomeTabState extends State<HomeTab> {
                     children: [
                       IconButton(
                         icon: const Icon(Icons.notifications_none, color: Colors.white),
-                        onPressed: () {},
+                        onPressed: () {
+                          Navigator.pushNamed(context, '/notifications');
+                        },
                       ),
                       Positioned(
                         right: 8,
@@ -1512,61 +1392,46 @@ class _HomeTabState extends State<HomeTab> {
                             padding: EdgeInsets.symmetric(horizontal: 16.0),
                             child: StatsInfoSection(),
                           ),
-                          const SizedBox(height: 24),
+                          const SizedBox(height: 30),
                           // Top Diagnostics Tests Section
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                                  'Top Diagnostics Tests',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 20,
-                                    color: Colors.white,
-                            ),
-                          ),
-                          TextButton(
-                            onPressed: () {},
-                            style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(40, 30)),
-                                  child: const Text('View All', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-                          ),
-                        ],
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16.0),
+                      child: Text(
+                        'Top Diagnostics Tests',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 20,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
                           const SizedBox(height: 12),
                           _TopDiagnosticsCarousel(
                             cartItems: widget.cartItems,
+                            cartData: widget.cartData,
                             onAddToCart: widget.onAddToCart,
+                            onRemoveFromCart: widget.onRemoveFromCart,
                           ),
                     const SizedBox(height: 24),
                           // Popular Health Packages Section
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                                  'Popular Health Packages',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 20,
-                                    color: Colors.white,
-                            ),
-                          ),
-                          TextButton(
-                            onPressed: () {},
-                            style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(40, 30)),
-                                  child: const Text('View all', style: TextStyle(color: Colors.white)),
-                          ),
-                        ],
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16.0),
+                      child: Text(
+                        'Popular Health Packages',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 20,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
-                          _TestPackagesCarousel(
-                            cartItems: widget.cartItems,
-                            onAddToCart: widget.onAddToCart,
-                          ),
+                                                      _TestPackagesCarousel(
+                              cartItems: widget.cartItems,
+                              cartData: widget.cartData,
+                              onAddToCart: widget.onAddToCart,
+                              onRemoveFromCart: widget.onRemoveFromCart,
+                              onCartChanged: widget.onCartChanged,
+                            ),
                     const SizedBox(height: 24),
                     // For Women Care Section
                     const Padding(
@@ -1582,6 +1447,20 @@ class _HomeTabState extends State<HomeTab> {
                     ),
                     const SizedBox(height: 12),
                     const _WomenCareGrid(),
+                    const SizedBox(height: 24),
+                      const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16.0),
+                      child: Text(
+                        'For Viral Organs',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    const _VitalOrgansGrid(),
                     const SizedBox(height: 24),
                     // const _HelpBookingCard(),
                     // const SizedBox(height: 24),
@@ -1834,14 +1713,25 @@ class _HomeTabState extends State<HomeTab> {
     );
   }
 
+  // Get cart item count based on actual cart data from API
+  int _getCartItemCount() {
+    if (widget.cartData.isEmpty || widget.cartData['items'] == null) {
+      return 0;
+    }
+    
+    final items = List<Map<String, dynamic>>.from(widget.cartData['items']);
+    return items.length;
+  }
+
   Widget _buildCartSummary() {
-    if (widget.cartItems.isEmpty) return const SizedBox.shrink();
+    if (widget.cartData.isEmpty || widget.cartData['items'] == null || widget.cartData['items'].isEmpty) {
+      return const SizedBox.shrink();
+    }
     
     // Count tests and packages from cart data
     int testCount = 0;
     int packageCount = 0;
     
-    if (widget.cartData.isNotEmpty && widget.cartData['items'] != null) {
       final items = List<Map<String, dynamic>>.from(widget.cartData['items']);
       for (var item in items) {
         if (item['lab_test_id'] != null && item['lab_test_id'].toString().isNotEmpty) {
@@ -1849,11 +1739,15 @@ class _HomeTabState extends State<HomeTab> {
         }
         if (item['lab_package_id'] != null && item['lab_package_id'].toString().isNotEmpty) {
           packageCount++;
-        }
       }
     }
     
-    return Container(
+    return GestureDetector(
+      onTap: () {
+        // Show cart summary bottom sheet when tapping anywhere on the cart summary
+        _showCartSummaryBottomSheet(context);
+      },
+      child: Container(
       margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1875,7 +1769,7 @@ class _HomeTabState extends State<HomeTab> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  '${widget.cartItems.length} ${widget.cartItems.length == 1 ? 'Item' : 'Items'} in Cart',
+                    '${items.length} ${items.length == 1 ? 'Item' : 'Items'} in Cart',
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
@@ -1948,6 +1842,7 @@ class _HomeTabState extends State<HomeTab> {
             ),
           ),
         ],
+        ),
       ),
     );
   }
@@ -2011,7 +1906,16 @@ class _TestsTabState extends State<TestsTab> with SingleTickerProviderStateMixin
       
       // Switch to specific tab if tabIndex is provided
       if (tabIndex != null && tabIndex >= 0 && tabIndex < 2) {
-        _tabController.animateTo(tabIndex);
+        print('🔄 Attempting to switch to tab index: $tabIndex');
+        // Use post frame callback to ensure tab controller is ready
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _tabController != null) {
+            print('🔄 Switching to tab index: $tabIndex');
+            _tabController.animateTo(tabIndex);
+          } else {
+            print('❌ Tab controller not ready or widget not mounted');
+          }
+        });
       }
       
       _performCategorySearch();
@@ -2772,7 +2676,7 @@ class _TestsTabState extends State<TestsTab> with SingleTickerProviderStateMixin
                                 _showCartSummaryBottomSheet(context);
                               },
                             ),
-                            if (widget.cartItems.isNotEmpty)
+                            if (_getCartItemCount() > 0)
                               Positioned(
                                 right: 8,
                                 top: 8,
@@ -2787,7 +2691,7 @@ class _TestsTabState extends State<TestsTab> with SingleTickerProviderStateMixin
                                     minHeight: 16,
                                   ),
                                   child: Text(
-                                    '${widget.cartItems.length}',
+                                    '${_getCartItemCount()}',
                                     style: const TextStyle(
                                       color: Colors.white,
                                       fontSize: 10,
@@ -2928,10 +2832,15 @@ class _TestsTabState extends State<TestsTab> with SingleTickerProviderStateMixin
             ),
           ),
         ),
-        body: Column(
-          children: [
-            Expanded(
-              child: TabBarView(
+        body: GestureDetector(
+          onTap: () {
+            // Dismiss keyboard when tapping outside input fields
+            FocusScope.of(context).unfocus();
+          },
+          child: Column(
+            children: [
+              Expanded(
+                child: TabBarView(
                 controller: _tabController,
                 physics: const NeverScrollableScrollPhysics(), // Prevent manual swiping
                 children: [
@@ -2962,6 +2871,7 @@ class _TestsTabState extends State<TestsTab> with SingleTickerProviderStateMixin
             ),
             _buildCartSummary(),
           ],
+        ),
         ),
 
       ),
@@ -3059,7 +2969,7 @@ class _TestsTabState extends State<TestsTab> with SingleTickerProviderStateMixin
                 },
                 child: Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
                     color: const Color(0xFF3B5BFE),
                     borderRadius: BorderRadius.circular(12),
@@ -3128,30 +3038,34 @@ class _TestsTabState extends State<TestsTab> with SingleTickerProviderStateMixin
                 },
                 child: Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF25D366),
-                    borderRadius: BorderRadius.circular(12),
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF25D366), Color(0xFF128C7E)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
-                        color: const Color(0xFF25D366).withOpacity(0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4),
+                        color: const Color(0xFF25D366).withOpacity(0.4),
+                        blurRadius: 12,
+                        offset: const Offset(0, 6),
                       ),
                     ],
                   ),
                   child: Row(
                     children: [
                       Container(
-                        padding: const EdgeInsets.all(8),
+                        padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
                           color: Colors.white.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(12),
                         ),
                         child: const Icon(
-                          Icons.chat,
+                          Icons.chat_bubble_outline,
                           color: Colors.white,
-                          size: 20,
+                          size: 24,
                         ),
                       ),
                       const SizedBox(width: 16),
@@ -3232,14 +3146,25 @@ class _TestsTabState extends State<TestsTab> with SingleTickerProviderStateMixin
     }
   }
 
+  // Get cart item count based on actual cart data from API
+  int _getCartItemCount() {
+    if (widget.cartData.isEmpty || widget.cartData['items'] == null) {
+      return 0;
+    }
+    
+    final items = List<Map<String, dynamic>>.from(widget.cartData['items']);
+    return items.length;
+  }
+
   Widget _buildCartSummary() {
-    if (widget.cartItems.isEmpty) return const SizedBox.shrink();
+    if (widget.cartData.isEmpty || widget.cartData['items'] == null || widget.cartData['items'].isEmpty) {
+      return const SizedBox.shrink();
+    }
     
     // Count tests and packages from cart data
     int testCount = 0;
     int packageCount = 0;
     
-    if (widget.cartData.isNotEmpty && widget.cartData['items'] != null) {
       final items = List<Map<String, dynamic>>.from(widget.cartData['items']);
       for (var item in items) {
         if (item['lab_test_id'] != null && item['lab_test_id'].toString().isNotEmpty) {
@@ -3247,11 +3172,15 @@ class _TestsTabState extends State<TestsTab> with SingleTickerProviderStateMixin
         }
         if (item['lab_package_id'] != null && item['lab_package_id'].toString().isNotEmpty) {
           packageCount++;
-        }
       }
     }
     
-    return Container(
+    return GestureDetector(
+      onTap: () {
+        // Show cart summary bottom sheet when tapping anywhere on the cart summary
+        _showCartSummaryBottomSheet(context);
+      },
+      child: Container(
       margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -3273,7 +3202,7 @@ class _TestsTabState extends State<TestsTab> with SingleTickerProviderStateMixin
               mainAxisSize: MainAxisSize.min,
           children: [
                 Text(
-                  '${widget.cartItems.length} ${widget.cartItems.length == 1 ? 'Item' : 'Items'} in Cart',
+                    '${items.length} ${items.length == 1 ? 'Item' : 'Items'} in Cart',
                     style: const TextStyle(
                       fontSize: 16,
                     fontWeight: FontWeight.w600,
@@ -3346,6 +3275,7 @@ class _TestsTabState extends State<TestsTab> with SingleTickerProviderStateMixin
                 ),
             ),
           ],
+        ),
       ),
     );
   }
@@ -3356,153 +3286,30 @@ class _TestsTabState extends State<TestsTab> with SingleTickerProviderStateMixin
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.7,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.only(
-            topLeft: Radius.circular(20),
-            topRight: Radius.circular(20),
-          ),
-        ),
-        child: Column(
-          children: [
-            // Handle bar
-            Container(
-              margin: const EdgeInsets.only(top: 8),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey[300],
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            
-            // Header
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.shopping_cart,
-                    color: AppColors.primaryBlue,
-                    size: 24,
-                  ),
-                  const SizedBox(width: 12),
-                  const Text(
-                    'Cart Summary',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black,
-                    ),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close),
-                  ),
-                ],
-              ),
-            ),
-            
-            // Cart items list
-            Expanded(
-              child: widget.cartItems.isEmpty
-                  ? const Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.shopping_cart_outlined,
-                            size: 64,
-                            color: Colors.grey,
-                          ),
-                          SizedBox(height: 16),
-                          Text(
-                            'Your cart is empty',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.grey,
-                            ),
-                          ),
-                          SizedBox(height: 8),
-                          Text(
-                            'Add some tests or packages to get started',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey,
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      itemCount: widget.cartItems.length,
-                      itemBuilder: (context, index) {
-                        final itemName = widget.cartItems.elementAt(index);
-                        
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          child: ListTile(
-                            title: Text(
-                              itemName,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            subtitle: const Text('Test/Package'),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
-                              onPressed: () {
-                                widget.onRemoveFromCart(itemName);
-                                Navigator.pop(context);
-                              },
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-            ),
-            
-            // Checkout button
-            if (widget.cartItems.isNotEmpty)
-              Container(
-                padding: const EdgeInsets.all(20),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () {
+      builder: (context) => _CartSummaryBottomSheet(
+        cartItems: widget.cartItems,
+        cartData: widget.cartData,
+        onCartChanged: widget.onCartChanged,
+        onProceedToCheckout: () {
                       Navigator.pop(context);
-                      // Navigate to checkout or show checkout options
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Proceed to checkout'),
-                          backgroundColor: AppColors.primaryBlue,
-                        ),
-                      );
+                      _proceedToCheckout(context);
                     },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primaryBlue,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: const Text(
-                      'Proceed to Checkout',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-          ],
+      ),
+    );
+  }
+
+  /// Proceed to checkout (similar to bottom cart proceed button)
+  void _proceedToCheckout(BuildContext context) {
+    // Navigate to lab selection screen for checkout
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => LabSelectionScreen(
+          cartItems: widget.cartItems,
+          cartData: widget.cartData,
+          testPrices: widget.testPrices,
+          testDiscounts: widget.testDiscounts,
+          onCartChanged: widget.onCartChanged,
         ),
       ),
     );
@@ -3528,15 +3335,18 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
   
   List<Map<String, dynamic>> upcomingOrders = [];
   List<Map<String, dynamic>> pastOrders = [];
+  List<Map<String, dynamic>> cancelledOrders = [];
   bool isLoadingUpcoming = true;
   bool isLoadingPast = true;
+  bool isLoadingCancelled = true;
   String? errorMessageUpcoming;
   String? errorMessagePast;
+  String? errorMessageCancelled;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _loadAppointmentHistory();
   }
 
@@ -3544,6 +3354,7 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
     await Future.wait([
       _loadUpcomingOrders(),
       _loadPastOrders(),
+      _loadCancelledOrders(),
     ]);
   }
 
@@ -3632,6 +3443,45 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
       setState(() {
         errorMessagePast = 'Network error occurred12';
         isLoadingPast = false;
+      });
+    }
+  }
+
+  Future<void> _loadCancelledOrders() async {
+    try {
+      setState(() {
+        isLoadingCancelled = true;
+        errorMessageCancelled = null;
+      });
+
+      final apiService = ApiService();
+      final result = await apiService.getAppointmentHistory(
+        bookingType: 'cancelled',
+        page: 1,
+        limit: 10,
+        statusId: 1,
+        paymentStatus: 1,
+      );
+
+      if (result['success'] && mounted) {
+        final data = result['data'];
+        final appointments = List<Map<String, dynamic>>.from(data['data'] ?? []);
+        
+        setState(() {
+          cancelledOrders = appointments;
+          isLoadingCancelled = false;
+        });
+      } else {
+        setState(() {
+          errorMessageCancelled = result['message'] ?? 'Failed to load cancelled orders';
+          isLoadingCancelled = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        print('🔄 API Service: Error in cancelled orders API: $e');
+        errorMessageCancelled = 'Network error occurred';
+        isLoadingCancelled = false;
       });
     }
   }
@@ -3727,9 +3577,9 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
     final names = <String>[];
     for (final item in lineItems) {
       if (item['test'] != null) {
-        names.add(item['test']['testname'] ?? 'Unknown Test');
+        names.add(item['test']['testname'] ?? 'Test');
       } else if (item['package'] != null) {
-        names.add(item['package']['packagename'] ?? 'Unknown Package');
+        names.add(item['package']['packagename'] ?? 'Package');
       }
     }
     
@@ -3752,7 +3602,16 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
     
     try {
       final dateTime = DateTime.parse(dateString);
-      return '${dateTime.day.toString().padLeft(2, '0')}/${dateTime.month.toString().padLeft(2, '0')}/${dateTime.year}';
+      const months = [
+        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      ];
+      
+      final day = dateTime.day.toString().padLeft(2, '0');
+      final month = months[dateTime.month - 1];
+      final year = dateTime.year;
+      
+      return '$day $month $year';
     } catch (e) {
       return dateString;
     }
@@ -3949,7 +3808,6 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
         final cancelResult = await apiService.cancelAppointment(
           appointmentId: appointmentId,
           cancellationReason: result['reason'] ?? 'User requested cancellation',
-          refundToWallet: result['refundToWallet'] ?? true,
           context: context,
         );
         
@@ -3961,7 +3819,7 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('Appointment cancelled successfully'),
+                content: Text('Cancellation success message'),
                 backgroundColor: Colors.green,
               ),
             );
@@ -4038,10 +3896,11 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
                       ),
                       dividerColor: Colors.transparent,
                       indicatorSize: TabBarIndicatorSize.tab,
-                      tabs: const [
-                        Tab(text: 'Upcoming'),
-                        Tab(text: 'Past'),
-                      ],
+                                             tabs: const [
+                         Tab(text: 'Upcoming'),
+                         Tab(text: 'Past'),
+                         Tab(text: 'Cancel'),
+                       ],
                     ),
                   ),
                 ],
@@ -4050,16 +3909,19 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
             
             // Tab Bar View
               Expanded(
-              child: TabBarView(
-                controller: _tabController,
-                  children: [
-                  // Upcoming Orders Tab
-                  _buildUpcomingOrdersTab(),
-                  
-                  // Past Orders Tab
-                  _buildPastOrdersTab(),
-                  ],
-                ),
+                               child: TabBarView(
+                   controller: _tabController,
+                   children: [
+                     // Upcoming Orders Tab
+                     _buildUpcomingOrdersTab(),
+                     
+                     // Past Orders Tab
+                     _buildPastOrdersTab(),
+                     
+                     // Cancelled Orders Tab
+                     _buildCancelledOrdersTab(),
+                   ],
+                 ),
               ),
             ],
           ),
@@ -4199,6 +4061,108 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
     );
   }
 
+  Widget _buildCancelledOrdersTab() {
+    if (isLoadingCancelled) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+            ),
+            SizedBox(height: 16),
+            Text(
+              'Loading cancelled orders...',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    
+    if (errorMessageCancelled != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline, color: Colors.red, size: 48),
+            const SizedBox(height: 16),
+            Text(
+              errorMessageCancelled!,
+              style: const TextStyle(color: Colors.red),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _loadCancelledOrders,
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
+    
+    if (cancelledOrders.isEmpty) {
+      return _buildEmptyState('No cancelled orders', 'You haven\'t cancelled any appointments yet', isUpcoming: false);
+    }
+    
+    return RefreshIndicator(
+      onRefresh: () async {
+        await _loadCancelledOrders();
+      },
+      color: Colors.white,
+      backgroundColor: AppColors.primaryBlue,
+      child: ListView.builder(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        itemCount: cancelledOrders.length,
+        itemBuilder: (context, index) {
+          final order = cancelledOrders[index];
+          return _buildCancelledOrderCard(context, order);
+        },
+      ),
+    );
+  }
+
+  // Reschedule appointment method
+  Future<void> _rescheduleAppointment(Map<String, dynamic> order) async {
+    // Show reschedule dialog
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => _RescheduleAppointmentDialog(
+        currentDate: _formatUpcomingDate(order),
+        currentDateTime: _getAppointmentDateTime(order),
+        organizationId: order['organization']?['id']?.toString() ?? 
+                       order['lab_id']?.toString() ?? 
+                       order['organization_id']?.toString() ?? '1',
+        appointmentId: order['appointment_id']?.toString() ?? order['id']?.toString() ?? '',
+      ),
+    );
+    
+    if (result != null && result['confirmed'] == true && result['success'] == true) {
+      // Refresh the orders list since reschedule was successful
+      _loadAppointmentHistory();
+    }
+  }
+
+  // Helper method to get appointment date time
+  DateTime? _getAppointmentDateTime(Map<String, dynamic> order) {
+    final dateString = order['appointment_datetime']?.toString() ?? 
+                      order['appointment_date']?.toString() ?? 
+                      order['date']?.toString();
+    
+    if (dateString == null) return null;
+    
+    try {
+      return DateTime.parse(dateString);
+    } catch (e) {
+      return null;
+    }
+  }
+
   Widget _buildUpcomingOrderCard(BuildContext context, Map<String, dynamic> order) {
     return InkWell(
       onTap: () {
@@ -4276,21 +4240,21 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
         ],
       ),
           ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-                  color: AppColors.primaryBlue.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-                  order['status_text']?.toString() ?? 'Pending',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.primaryBlue,
-                  ),
-                ),
-              ),
+          // Container(
+          //   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          //   decoration: BoxDecoration(
+          //         color: AppColors.primaryBlue.withOpacity(0.1),
+          //     borderRadius: BorderRadius.circular(20),
+          //   ),
+          //   child: Text(
+          //         order['status_text']?.toString() ?? 'Pending',
+          //         style: const TextStyle(
+          //           fontSize: 12,
+          //           fontWeight: FontWeight.w600,
+          //           color: AppColors.primaryBlue,
+          //         ),
+          //       ),
+          //     ),
             ],
           ),
           const SizedBox(height: 16),
@@ -4326,7 +4290,7 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
               Expanded(
                 child: OutlinedButton.icon(
                   onPressed: () {
-                    // TODO: Reschedule functionality
+                    _rescheduleAppointment(order);
                   },
                   icon: const Icon(Icons.schedule, size: 18),
                   label: const Text('Reschedule'),
@@ -4469,6 +4433,9 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
               Expanded(
                 child: _buildDetailItem(Icons.calendar_today, 'Date', _formatPastDate(order)),
               ),
+              Expanded(
+                child: _buildDetailItem(Icons.access_time, 'Time', _formatPastTime(order)),
+              ),
             ],
           ),
           const SizedBox(height: 12),
@@ -4527,6 +4494,166 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
         ],
       ),
     )  );
+  }
+
+  Widget _buildCancelledOrderCard(BuildContext context, Map<String, dynamic> order) {
+    return GestureDetector(
+      onTap: () {
+        final appointmentId = order['appointment_id']?.toString() ?? order['id']?.toString() ?? '';
+        if (appointmentId.isNotEmpty) {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => OrderDetailScreen.withAppointmentId(
+                appointmentId: appointmentId,
+              ),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Unable to load appointment details'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header with status
+            Row(
+              children: [
+                Container(
+                  width: 50,
+                  height: 50,
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.cancel,
+                    color: Colors.red,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        order['organization']?['name']?.toString() ?? 
+                        order['lab_name']?.toString() ?? 
+                        order['lab']?.toString() ?? 
+                        order['organization_name']?.toString() ?? 
+                        'Lab Name',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.primaryBlue,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        order['organization']?['branch_name']?.toString() ?? 
+                        order['organization']?['name']?.toString() ?? 
+                        order['branch_name']?.toString() ?? 
+                        'Branch Name',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: AppColors.grey,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Text(
+                    'Cancelled',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.red,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            
+            // Order details
+            Row(
+              children: [
+                Expanded(
+                  child: _buildDetailItem(Icons.calendar_today, 'Date', _formatPastDate(order)),
+                ),
+                Expanded(
+                  child: _buildDetailItem(Icons.access_time, 'Time', _formatPastTime(order)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildDetailItem(Icons.location_on, 'Collection', _formatPastCollectionType(order)),
+                ),
+                Expanded(
+                  child: _buildDetailItem(Icons.payment, 'Amount', _formatPastAmount(order)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            
+            // Cancellation reason if available
+            if (order['cancellation_reason'] != null && order['cancellation_reason'].toString().isNotEmpty) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.red.withOpacity(0.2)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Cancellation Reason:',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.red,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      order['cancellation_reason'].toString(),
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Colors.red,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildDetailItem(IconData icon, String label, String value) {
@@ -4694,9 +4821,9 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
     final names = <String>[];
     for (final item in lineItems) {
       if (item['test'] != null) {
-        names.add(item['test']['testname'] ?? 'Unknown Test');
+        names.add(item['test']['testname'] ?? 'Test');
       } else if (item['package'] != null) {
-        names.add(item['package']['packagename'] ?? 'Unknown Package');
+        names.add(item['package']['packagename'] ?? 'Package');
       }
     }
     
@@ -4719,7 +4846,16 @@ class _MyOrdersTabState extends State<MyOrdersTab> with SingleTickerProviderStat
     
     try {
       final dateTime = DateTime.parse(dateString);
-      return '${dateTime.day.toString().padLeft(2, '0')}/${dateTime.month.toString().padLeft(2, '0')}/${dateTime.year}';
+      const months = [
+        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      ];
+      
+      final day = dateTime.day.toString().padLeft(2, '0');
+      final month = months[dateTime.month - 1];
+      final year = dateTime.year;
+      
+      return '$day $month $year';
     } catch (e) {
       return dateString;
     }
@@ -5231,7 +5367,21 @@ class _ProfileTabState extends State<ProfileTab> {
                   ),
                   // Edit button
                   IconButton(
-                    onPressed: () {},
+                    onPressed: () async {
+                      final result = await Navigator.pushNamed(
+                        context,
+                        '/profile-edit',
+                        arguments: {'userProfile': userProfile},
+                      );
+                      
+                      // If profile was updated successfully, refresh the profile data
+                      if (result != null && result is Map<String, dynamic>) {
+                        setState(() {
+                          userProfile = result;
+                        });
+                        print('✅ Profile data refreshed in landing page: $result');
+                      }
+                    },
                     icon: Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
@@ -5253,7 +5403,7 @@ class _ProfileTabState extends State<ProfileTab> {
               if (errorMessage != null)
                     Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(20),
                   margin: const EdgeInsets.only(bottom: 16),
                       decoration: BoxDecoration(
                     color: Colors.red.withOpacity(0.1),
@@ -5298,7 +5448,7 @@ class _ProfileTabState extends State<ProfileTab> {
               if (walletErrorMessage != null)
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(20),
                   margin: const EdgeInsets.only(bottom: 16),
                   decoration: BoxDecoration(
                     color: Colors.red.withOpacity(0.1),
@@ -5343,7 +5493,7 @@ class _ProfileTabState extends State<ProfileTab> {
               if (referralStatsErrorMessage != null)
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(20),
                   margin: const EdgeInsets.only(bottom: 16),
                   decoration: BoxDecoration(
                     color: Colors.red.withOpacity(0.1),
@@ -5765,6 +5915,9 @@ class _ProfileTabState extends State<ProfileTab> {
 
 
 
+
+
+
   Widget _buildMenuItem(BuildContext context, IconData icon, String title, String subtitle, {bool isLogout = false, bool isDebug = false}) {
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
@@ -5772,7 +5925,7 @@ class _ProfileTabState extends State<ProfileTab> {
         width: 48,
         height: 48,
           decoration: BoxDecoration(
-            color: isLogout 
+            color: isLogout
                 ? Colors.red.withOpacity(0.1)
                 : isDebug
                     ? Colors.orange.withOpacity(0.1)
@@ -5805,7 +5958,7 @@ class _ProfileTabState extends State<ProfileTab> {
           size: 16,
         color: isLogout ? Colors.red : isDebug ? Colors.orange : const Color(0xFF7F8C8D),
       ),
-      onTap: () async {
+              onTap: () async {
         if (title == 'Medical History') {
           Navigator.of(context).push(
             MaterialPageRoute(
@@ -5937,11 +6090,44 @@ class ServiceGridSection extends StatelessWidget {
   const ServiceGridSection({super.key});
 
   void _navigateToTestsWithCategory(BuildContext context, String category, {int? tabIndex}) {
+    print('🎯 ServiceGridSection: _navigateToTestsWithCategory called with category: $category, tabIndex: $tabIndex');
     // Find the LandingPageState to access the tab controller
     final landingPageState = context.findAncestorStateOfType<_LandingPageState>();
     if (landingPageState != null) {
       // Navigate to Tests tab (index 1) and pass the category and tab index
       landingPageState._navigateToTestsTab(category, tabIndex: tabIndex);
+    } else {
+      print('❌ ServiceGridSection: LandingPageState not found');
+    }
+  }
+
+  void _showPrescriptionEnquiryForm(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) {
+        return const PrescriptionEnquiryForm();
+      },
+    );
+  }
+
+  Future<void> _openWhatsApp(BuildContext context) async {
+    const String phoneNumber = '+91-1800-123-4567';
+    const String message = 'Hello! I need help with my health tests and packages.';
+    final Uri whatsappUri = Uri.parse(
+      'https://wa.me/$phoneNumber?text=${Uri.encodeComponent(message)}'
+    );
+    
+    if (await canLaunchUrl(whatsappUri)) {
+      await launchUrl(whatsappUri);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not launch WhatsApp'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
@@ -5951,14 +6137,15 @@ class ServiceGridSection extends StatelessWidget {
       {
         'icon': Icons.bloodtype,
         'color': const Color(0xFFE74C3C),
-        'label': 'Blood Tests & Consultations',
+        'label': 'Blood Tests/Scans',
         'category': 'blood_tests',
       },
       {
         'icon': Icons.scanner,
         'color': const Color(0xFF9B59B6),
         'label': 'Doctor / Dietitian / Physio Consultation',
-        'category': 'scans',
+        'category': 'consultation',
+        'tabIndex': 1, // Navigate to Packages tab
       },
       {
         'icon': Icons.medical_services,
@@ -6000,12 +6187,17 @@ class ServiceGridSection extends StatelessWidget {
                 )
               : () {
                   // Handle other service taps (View Reports)
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('${service['label']} coming soon!'),
-                      backgroundColor: AppColors.primaryBlue,
-                    ),
-                  );
+                  // ScaffoldMessenger.of(context).showSnackBar(
+                  //   SnackBar(
+                  //     content: Text('${service['label']} coming soon!'),
+                  //     backgroundColor: AppColors.primaryBlue,
+                  //   ),
+                  // );
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => const MedicalHistoryScreen(),
+                      ),
+                    );
                 },
           child: Container(
             decoration: BoxDecoration(
@@ -6048,58 +6240,210 @@ class ServiceGridSection extends StatelessWidget {
         Row(
           children: [
             Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFF4CAF50).withOpacity(0.6), width: 1.5),
-                ),
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                  child: Row(
-                    children: [
-                      Icon(Icons.chat_bubble, color: Color(0xFF25D366), size: 24),
-                      SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          'Book via WhatsApp',
-                          style: TextStyle(
-                            color: Color(0xFF4CAF50),
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
-                          ),
-                        ),
+              child: GestureDetector(
+                onTapDown: (_) {
+                  // Button pressed effect
+                },
+                onTapUp: (_) async {
+                  await _openWhatsApp(context);
+                },
+                onTapCancel: () {
+                  // Reset button state
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 100),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF25D366), Color(0xFF128C7E)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF25D366).withOpacity(0.4),
+                        blurRadius: 12,
+                        offset: const Offset(0, 6),
+                        spreadRadius: 0,
+                      ),
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                        spreadRadius: 0,
                       ),
                     ],
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.2),
+                      width: 1,
+                    ),
+                  ),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.white.withOpacity(0.1),
+                          Colors.transparent,
+                        ],
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.25),
+                            borderRadius: BorderRadius.circular(10),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.1),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.chat_bubble_outline,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Book via WhatsApp',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                              shadows: [
+                                Shadow(
+                                  color: Colors.black.withOpacity(0.3),
+                                  offset: const Offset(0, 1),
+                                  blurRadius: 2,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Icon(
+                            Icons.arrow_forward_ios,
+                            color: Colors.white.withOpacity(0.9),
+                            size: 14,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
             const SizedBox(width: 8),
             Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppColors.primaryBlue.withOpacity(0.6), width: 1.5),
-                ),
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                  child: Row(
-                    children: [
-                      Icon(Icons.assignment, color: AppColors.primaryBlue, size: 24),
-                      SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          'Book with Dr prescription',
-                          style: TextStyle(
-                            color: AppColors.primaryBlue,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
-                          ),
-                        ),
+              child: GestureDetector(
+                onTapDown: (_) {
+                  // Button pressed effect
+                },
+                onTapUp: (_) {
+                  _showPrescriptionEnquiryForm(context);
+                },
+                onTapCancel: () {
+                  // Reset button state
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 100),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF9C27B0), Color(0xFF7B1FA2)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF9C27B0).withOpacity(0.4),
+                        blurRadius: 12,
+                        offset: const Offset(0, 6),
+                        spreadRadius: 0,
+                      ),
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                        spreadRadius: 0,
                       ),
                     ],
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.2),
+                      width: 1,
+                    ),
+                  ),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.white.withOpacity(0.1),
+                          Colors.transparent,
+                        ],
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.25),
+                            borderRadius: BorderRadius.circular(10),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.1),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.assignment_outlined,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Book with Dr prescription',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                              shadows: [
+                                Shadow(
+                                  color: Colors.black.withOpacity(0.3),
+                                  offset: const Offset(0, 1),
+                                  blurRadius: 2,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -6111,50 +6455,639 @@ class ServiceGridSection extends StatelessWidget {
   }
 }
 
-class WhatsAppBanner extends StatelessWidget {
-  const WhatsAppBanner({super.key});
+class PrescriptionEnquiryForm extends StatefulWidget {
+  const PrescriptionEnquiryForm({super.key});
+
+  @override
+  State<PrescriptionEnquiryForm> createState() => _PrescriptionEnquiryFormState();
+}
+
+class _PrescriptionEnquiryFormState extends State<PrescriptionEnquiryForm> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _phoneController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _prescriptionController = TextEditingController();
+  bool _isLoading = false;
+  bool _isUploadingImages = false;
+  List<String> _uploadedImages = [];
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _phoneController.dispose();
+    _emailController.dispose();
+    _prescriptionController.dispose();
+    super.dispose();
+  }
+
+
+
+  void _submitForm() async {
+    if (_formKey.currentState!.validate()) {
+      setState(() {
+        _isLoading = true;
+      });
+
+      try {
+        // Upload images to Firebase Storage first if any images are selected
+        List<String>? imageUrls;
+        if (_uploadedImages.isNotEmpty) {
+          setState(() {
+            _isUploadingImages = true;
+          });
+          
+          try {
+            print('📤 Starting Firebase upload for ${_uploadedImages.length} images...');
+            imageUrls = await FirebaseStorageService.uploadEnquiryImages(_uploadedImages);
+            print('✅ Firebase upload completed. URLs: $imageUrls');
+          } catch (e) {
+            print('❌ Firebase upload failed: $e');
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Failed to upload images: $e'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+            // Continue without images if upload fails
+            imageUrls = null;
+          } finally {
+            setState(() {
+              _isUploadingImages = false;
+            });
+          }
+        }
+        
+        // Create API service instance
+        final apiService = ApiService();
+        
+        // Call the submit enquiry API with Firebase URLs
+        final result = await apiService.submitInquiry(
+          fullName: _nameController.text.trim(),
+          phoneNumber: _phoneController.text.trim(),
+          emailAddress: _emailController.text.trim().isNotEmpty ? _emailController.text.trim() : null,
+          remarks: _prescriptionController.text.trim().isNotEmpty ? _prescriptionController.text.trim() : null,
+          imagePaths: imageUrls, // Use Firebase URLs instead of local file paths
+          context: context,
+        );
+        
+        if (mounted) {
+          if (result['success'] == true) {
+            Navigator.of(context).pop();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(result['message'] ?? 'Enquiry submitted successfully! We will contact you soon.'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(result['message'] ?? 'Failed to submit enquiry. Please try again.'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error submitting enquiry: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 2),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
+      height: MediaQuery.of(context).size.height * 0.85,
+      decoration: const BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFF4CAF50), width: 2),
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(20),
+          topRight: Radius.circular(20),
+        ),
       ),
-      child: const Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
         children: [
-          // WhatsApp icon
-          Icon(Icons.chat_bubble, color: Color(0xFF25D366), size: 32),
-          SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          // Handle bar
+          Container(
+            margin: const EdgeInsets.only(top: 12),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          
+          // Header
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'Book Appointment via WhatsApp',
-                  style: TextStyle(
-                    color: Color(0xFF43B02A),
-                    fontWeight: FontWeight.bold,
-                    fontSize: 15,
+                const Expanded(
+                  child: Text(
+                    'Book with Prescription',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
-                SizedBox(height: 4),
-                Text(
-                  'Chat with us. Book your appointment in 2 min.',
-                  style: TextStyle(
-                    color: Color(0xFF222222),
-                    fontWeight: FontWeight.w500,
-                    fontSize: 13,
-                  ),
+                IconButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.close),
                 ),
               ],
             ),
           ),
+          
+          // Form
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom > 0 
+                    ? MediaQuery.of(context).viewInsets.bottom - 50 
+                    : 0,
+              ),
+              child: GestureDetector(
+                onTap: () {
+                  // Dismiss keyboard when tapping outside input fields
+                  FocusScope.of(context).unfocus();
+                },
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+
+                    const SizedBox(height: 24),
+                    
+                    // Name field
+                    Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.05),
+                            blurRadius: 10,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: TextFormField(
+                        controller: _nameController,
+                        decoration: InputDecoration(
+                          labelText: 'Full Name *',
+                          labelStyle: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: Colors.grey[300]!),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: Colors.grey[300]!),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: AppColors.primaryBlue, width: 2),
+                          ),
+                          errorBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: Colors.red[300]!),
+                          ),
+                          filled: true,
+                          fillColor: Colors.grey[50],
+                          prefixIcon: Icon(Icons.person, color: Colors.grey[600]),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Please enter your name';
+                          }
+                          return null;
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    
+                    // Phone field
+                    Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.05),
+                            blurRadius: 10,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: TextFormField(
+                        controller: _phoneController,
+                        keyboardType: TextInputType.phone,
+                        decoration: InputDecoration(
+                          labelText: 'Phone Number *',
+                          labelStyle: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: Colors.grey[300]!),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: Colors.grey[300]!),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: AppColors.primaryBlue, width: 2),
+                          ),
+                          errorBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: Colors.red[300]!),
+                          ),
+                          filled: true,
+                          fillColor: Colors.grey[50],
+                          prefixIcon: Icon(Icons.phone, color: Colors.grey[600]),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Please enter your phone number';
+                          }
+                          if (value.length < 10) {
+                            return 'Please enter a valid phone number';
+                          }
+                          return null;
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    
+                    // Email field
+                    Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.05),
+                            blurRadius: 10,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: TextFormField(
+                        controller: _emailController,
+                        keyboardType: TextInputType.emailAddress,
+                        decoration: InputDecoration(
+                          labelText: 'Email Address',
+                          labelStyle: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: Colors.grey[300]!),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: Colors.grey[300]!),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: AppColors.primaryBlue, width: 2),
+                          ),
+                          errorBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: Colors.red[300]!),
+                          ),
+                          filled: true,
+                          fillColor: Colors.grey[50],
+                          prefixIcon: Icon(Icons.email, color: Colors.grey[600]),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                        ),
+                        validator: (value) {
+                          if (value != null && value.isNotEmpty) {
+                            if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
+                              return 'Please enter a valid email address';
+                            }
+                          }
+                          return null;
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    
+                    // Remarks field (formerly Prescription Details)
+                    Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.05),
+                            blurRadius: 10,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: TextFormField(
+                        controller: _prescriptionController,
+                        maxLines: 4,
+                        decoration: InputDecoration(
+                          labelText: 'Remarks',
+                          labelStyle: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: Colors.grey[300]!),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: Colors.grey[300]!),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: AppColors.primaryBlue, width: 2),
+                          ),
+                          errorBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: Colors.red[300]!),
+                          ),
+                          filled: true,
+                          fillColor: Colors.grey[50],
+                          prefixIcon: Icon(Icons.note, color: Colors.grey[600]),
+                          alignLabelWithHint: true,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                        ),
+                        // No validation required since it's optional
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    
+                    // Upload Prescription Images Section
+                    ImageUploadWidget(
+                      title: 'Upload Prescription Files',
+                      subtitle: 'Images and PDFs will be uploaded to secure cloud storage (optional)',
+                      uploadButtonText: 'Upload Prescription Files',
+                      maxSizeText: 'Max 5MB',
+                      allowPdfUpload: true,
+                      initialImages: _uploadedImages,
+                      onImagesChanged: (List<String> images) {
+                        setState(() {
+                          _uploadedImages = images;
+                        });
+                      },
+                    ),
+                    
+                    const SizedBox(height: 24),
+                    
+                    // Submit button
+                    Container(
+                      width: double.infinity,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.primaryBlue.withOpacity(0.3),
+                            blurRadius: 15,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
+                      ),
+                      child: ElevatedButton(
+                        onPressed: (_isLoading || _isUploadingImages) ? null : _submitForm,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primaryBlue,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                        ),
+                        child: (_isLoading || _isUploadingImages)
+                            ? const SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                ),
+                              )
+                            : const Text(
+                                'Submit Enquiry',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        ),
         ],
+      ),
+    );
+  }
+}
+
+class WhatsAppBanner extends StatefulWidget {
+  const WhatsAppBanner({super.key});
+
+  @override
+  State<WhatsAppBanner> createState() => _WhatsAppBannerState();
+}
+
+class _WhatsAppBannerState extends State<WhatsAppBanner> {
+  bool _isPressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) {
+        setState(() {
+          _isPressed = true;
+        });
+      },
+      onTapUp: (_) async {
+        setState(() {
+          _isPressed = false;
+        });
+        
+        const String phoneNumber = '+91-1800-123-4567';
+        const String message = 'Hello! I need help with my health tests and packages.';
+        final Uri whatsappUri = Uri.parse(
+          'https://wa.me/$phoneNumber?text=${Uri.encodeComponent(message)}'
+        );
+        
+        if (await canLaunchUrl(whatsappUri)) {
+          await launchUrl(whatsappUri);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Could not launch WhatsApp'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      },
+      onTapCancel: () {
+        setState(() {
+          _isPressed = false;
+        });
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 100),
+        margin: const EdgeInsets.symmetric(horizontal: 2),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF25D366), Color(0xFF128C7E)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF25D366).withOpacity(_isPressed ? 0.2 : 0.4),
+              blurRadius: _isPressed ? 6 : 12,
+              offset: Offset(0, _isPressed ? 2 : 6),
+              spreadRadius: 0,
+            ),
+            BoxShadow(
+              color: Colors.black.withOpacity(_isPressed ? 0.05 : 0.1),
+              blurRadius: _isPressed ? 2 : 4,
+              offset: Offset(0, _isPressed ? 1 : 2),
+              spreadRadius: 0,
+            ),
+          ],
+          border: Border.all(
+            color: Colors.white.withOpacity(0.2),
+            width: 1,
+          ),
+        ),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            gradient: LinearGradient(
+              colors: [
+                Colors.white.withOpacity(_isPressed ? 0.05 : 0.1),
+                Colors.transparent,
+              ],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+            ),
+          ),
+          child: Row(
+            children: [
+              // WhatsApp icon with background
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.25),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.chat_bubble_outline,
+                  color: Colors.white,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Book Appointment via WhatsApp',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        shadows: [
+                          Shadow(
+                            color: Colors.black.withOpacity(0.3),
+                            offset: const Offset(0, 1),
+                            blurRadius: 2,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Chat with us. Book your appointment in 2 min.',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.9),
+                        fontWeight: FontWeight.w500,
+                        fontSize: 14,
+                        shadows: [
+                          Shadow(
+                            color: Colors.black.withOpacity(0.2),
+                            offset: const Offset(0, 1),
+                            blurRadius: 1,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.arrow_forward_ios,
+                  color: Colors.white,
+                  size: 16,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -6200,7 +7133,7 @@ class StatsInfoSection extends StatelessWidget {
     ];
     
     return SizedBox(
-      height: 80,
+      height: 84,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.symmetric(horizontal: 2),
@@ -6440,11 +7373,17 @@ class _OfferBannerCarouselState extends State<OfferBannerCarousel> {
 
 class _TestPackagesCarousel extends StatefulWidget {
   final Set<String> cartItems;
+  final Map<String, dynamic> cartData;
   final Future<void> Function(String) onAddToCart;
+  final Future<void> Function(String) onRemoveFromCart;
+  final VoidCallback onCartChanged;
 
   const _TestPackagesCarousel({
     required this.cartItems,
+    required this.cartData,
     required this.onAddToCart,
+    required this.onRemoveFromCart,
+    required this.onCartChanged,
   });
 
   @override
@@ -6461,6 +7400,135 @@ class _TestPackagesCarouselState extends State<_TestPackagesCarousel> {
   void initState() {
     super.initState();
     _loadTopPackages();
+  }
+
+  // Remove package from cart
+  Future<void> _removePackageFromCart(String packageName) async {
+    try {
+      // Find the cart item ID by package name
+      String? cartItemId;
+      if (widget.cartData.isNotEmpty && widget.cartData['items'] != null) {
+        final items = List<Map<String, dynamic>>.from(widget.cartData['items']);
+        final matchingItem = items.firstWhere(
+          (item) => item['test_name'] == packageName,
+          orElse: () => {},
+        );
+        cartItemId = matchingItem['id']?.toString();
+      }
+      
+      if (cartItemId != null) {
+        final apiService = ApiService();
+        final result = await apiService.removeFromCart(cartItemId);
+        
+        if (result['success']) {
+          // Call parent's onRemoveFromCart to update UI
+          await widget.onRemoveFromCart(packageName);
+          
+          // Package removed from cart - no toast message needed
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(result['message'] ?? 'Failed to remove from cart'),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 2),
+              ),
+            );
+          }
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Could not find cart item to remove'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error removing from cart: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
+  // Show lab selection bottom sheet for package
+  void _showPackageLabSelectionBottomSheet(BuildContext context, Map<String, dynamic> package) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return OrganizationSelectionSheet(
+          package: package,
+          onAddToCart: () async {
+            final packageName = package['packagename'] ?? package['name'] ?? 'Package';
+            // Call parent's onAddToCart to update UI
+            await widget.onAddToCart(packageName);
+            
+            // Package added to cart - no toast message needed
+          },
+          onAddToCartApi: (packageName, packageId, originalPrice, {organizationId, organizationName, discountedPrice, discountedValue, discountType}) async {
+            try {
+              final apiService = ApiService();
+              final result = await apiService.addToCart(
+                price: originalPrice,
+                testName: packageName,
+                labTestId: '', // Empty string for packages
+                packageId: packageId,
+                organizationId: organizationId,
+                organizationName: organizationName,
+                preferredDate: null,
+                preferredTime: null,
+                discountedPrice: discountedPrice,
+                discountedValue: discountedValue,
+                discountType: discountType,
+              );
+              
+              if (result['success']) {
+                // Call parent's onAddToCart to update UI
+                await widget.onAddToCart(packageName);
+                
+                // Package added to cart - no toast message needed
+                return true;
+              } else {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(result['message'] ?? 'Failed to add to cart'),
+                      backgroundColor: Colors.red,
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                }
+                return false;
+              }
+            } catch (e) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Error adding to cart: ${e.toString()}'),
+                    backgroundColor: Colors.red,
+                    duration: const Duration(seconds: 2),
+                  ),
+                );
+              }
+              return false;
+            }
+          },
+        );
+      },
+    );
   }
 
   Future<void> _loadTopPackages() async {
@@ -6564,14 +7632,16 @@ class _TestPackagesCarouselState extends State<_TestPackagesCarousel> {
 
   // Helper method to calculate discounted price
   String _calculateDiscountedPrice(String basePrice, String discountValue) {
-    try {
-      final base = double.parse(basePrice);
-      final discount = double.parse(discountValue);
-      final discounted = base - (base * discount / 100);
-      return '₹${discounted.toStringAsFixed(0)}';
-    } catch (e) {
-      return '₹$basePrice';
-    }
+    // try {
+    //   final base = double.parse(basePrice);
+    //   final discount = double.parse(discountValue);
+    //   final discounted = base - (base * discount / 100);
+    //   return '₹${discounted.toStringAsFixed(0)}';
+    // } catch (e) {
+    //   return '₹$basePrice';
+    // }
+
+       return '₹$discountValue';
   }
 
   // Helper method to format discount value (remove floating points)
@@ -6606,9 +7676,7 @@ class _TestPackagesCarouselState extends State<_TestPackagesCarousel> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        SizedBox(
-          height: 240,
-          child: isLoading
+        isLoading
               ? const Center(
                   child: CircularProgressIndicator(
                     valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
@@ -6624,15 +7692,17 @@ class _TestPackagesCarouselState extends State<_TestPackagesCarousel> {
                         ),
                       ),
                     )
-                  : PageView.builder(
-            controller: _controller,
-            itemCount: packages.length,
-            onPageChanged: (index) {
-              setState(() {
-                _currentPage = index;
-              });
-            },
-            itemBuilder: (context, index) {
+                  : Container(
+            height: 350, // Give PageView a reasonable height
+            child: PageView.builder(
+              controller: _controller,
+              itemCount: packages.length,
+              onPageChanged: (index) {
+                setState(() {
+                  _currentPage = index;
+                });
+              },
+              itemBuilder: (context, index) {
               final pkg = packages[index];
                         final testNames = _extractTestNames(pkg);
                         final discountedPrice = _calculateDiscountedPrice(
@@ -6652,74 +7722,25 @@ class _TestPackagesCarouselState extends State<_TestPackagesCarousel> {
                             tests: testNames.length,
                             reportTime: '24 hours', // Default value
                   isInCart: widget.cartItems.contains(pkg['packagename'] ?? 'Package'),
-                  onAdd: () async {
-                    final packageName = pkg['packagename'] ?? 'Package';
-                    
-                    try {
-                      // Calculate discounted price
-                      final basePrice = double.tryParse(pkg['baseprice']?.toString() ?? '0') ?? 0.0;
-                      final discountValue = double.tryParse(pkg['discountvalue']?.toString() ?? '0') ?? 0.0;
-                      final discountedPrice = basePrice - (basePrice * discountValue / 100);
-                      final discountType = pkg['discounttype']?.toString() ?? pkg['discount_type']?.toString() ?? 'percentage';
-                      
-                      print('🛒 Adding package to cart with original price: $basePrice, discounted price: $discountedPrice');
-                      print('🛒 Discount value: $discountValue, discount type: $discountType');
-                      
-                      // Call the actual API to add to cart
-                      final apiService = ApiService();
-                      final result = await apiService.addToCart(
-                        price: basePrice,
-                        testName: packageName,
-                        labTestId: 'dummy_test_id', // Required but not used when packageId is provided
-                        packageId: pkg['id']?.toString() ?? 'default_package_id',
-                        preferredDate: null,
-                        preferredTime: null,
-                        discountedPrice: discountedPrice,
-                        discountedValue: discountValue,
-                        discountType: discountType,
-                      );
-                      
-                      if (result['success']) {
-                        // Call parent's onAddToCart to update UI
-                        await widget.onAddToCart(packageName);
-                        
-                        if (mounted) {
-                          SnackBarHelper.showSuccess(
-                            context,
-                            '$packageName added to cart!',
-                            duration: const Duration(seconds: 2),
-                          );
-                        }
-                      } else {
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(result['message'] ?? 'Failed to add to cart'),
-                              backgroundColor: Colors.red,
-                              duration: const Duration(seconds: 2),
-                            ),
-                          );
-                        }
-                      }
-                    } catch (e) {
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Error adding to cart: ${e.toString()}'),
-                            backgroundColor: Colors.red,
-                            duration: const Duration(seconds: 2),
-                          ),
-                        );
-                      }
-                    }
-                  },
+                                     onAdd: () async {
+                     final packageName = pkg['packagename'] ?? 'Package';
+                     final isInCart = widget.cartItems.contains(packageName);
+                     
+                     if (isInCart) {
+                       // Package is already in cart, remove it
+                       await _removePackageFromCart(packageName);
+                     } else {
+                       // Package not in cart, show lab selection bottom sheet
+                       _showPackageLabSelectionBottomSheet(context, pkg);
+                     }
+                   },
                   width: MediaQuery.of(context).size.width * 0.8,
                             testNames: testNames,
                 ),
               );
             },
+            ),
           ),
-        ),
         const SizedBox(height: 8),
         if (!isLoading && packages.isNotEmpty)
         Row(
@@ -6745,11 +7766,15 @@ class _TestPackagesCarouselState extends State<_TestPackagesCarousel> {
 
 class _TopDiagnosticsCarousel extends StatefulWidget {
   final Set<String> cartItems;
+  final Map<String, dynamic> cartData;
   final Future<void> Function(String) onAddToCart;
+  final Future<void> Function(String) onRemoveFromCart;
 
   const _TopDiagnosticsCarousel({
     required this.cartItems,
+    required this.cartData,
     required this.onAddToCart,
+    required this.onRemoveFromCart,
   });
 
   @override
@@ -6793,7 +7818,7 @@ class _TopDiagnosticsCarouselState extends State<_TopDiagnosticsCarousel> {
           isLoading = false;
         });
         // Load fallback data on error
-        _loadFallbackTests();
+      //  _loadFallbackTests();
       }
     }
   }
@@ -6824,9 +7849,7 @@ class _TopDiagnosticsCarouselState extends State<_TopDiagnosticsCarousel> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        SizedBox(
-          height: 170,
-          child: isLoading
+        isLoading
               ? const Center(
                   child: CircularProgressIndicator(
                     valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
@@ -6842,15 +7865,17 @@ class _TopDiagnosticsCarouselState extends State<_TopDiagnosticsCarousel> {
                         ),
                       ),
                     )
-                  : PageView.builder(
-            controller: _controller,
-            itemCount: diagnostics.length,
-            onPageChanged: (index) {
-              setState(() {
-                _currentPage = index;
-              });
-            },
-            itemBuilder: (context, index) {
+                  : Container(
+            height: 200, // Give PageView a reasonable height
+            child: PageView.builder(
+              controller: _controller,
+              itemCount: diagnostics.length,
+              onPageChanged: (index) {
+                setState(() {
+                  _currentPage = index;
+                });
+              },
+              itemBuilder: (context, index) {
               final diag = diagnostics[index];
               return AnimatedContainer(
                 duration: const Duration(milliseconds: 300),
@@ -6860,49 +7885,90 @@ class _TopDiagnosticsCarouselState extends State<_TopDiagnosticsCarousel> {
                             reportTime: diag['collectioninstruction'] ?? '6 hours',
                             alsoKnownAs: diag['shortname'] ?? diag['testname'] ?? 'Test',
                             isInCart: widget.cartItems.contains(diag['testname'] ?? diag['shortname'] ?? 'Test'),
-                  onAdd: () async {
+                            cartData: widget.cartData,
+                  onToggleCart: () async {
                     final testName = diag['testname'] ?? diag['shortname'] ?? 'Test';
+                    final isInCart = widget.cartItems.contains(testName);
                     
                     try {
-                      // Call the actual API to add to cart
-                      final apiService = ApiService();
-                      final result = await apiService.addToCart(
-                        price: 0.0, // Default price, will be updated by server
-                        testName: testName,
-                        labTestId: diag['id']?.toString() ?? 'default_test_id',
-                        preferredDate: null,
-                        preferredTime: null,
-                      );
-                      
-                      if (result['success']) {
-                        // Call parent's onAddToCart to update UI
-                        await widget.onAddToCart(testName);
+                      if (isInCart) {
+                        // Remove from cart
+                        final apiService = ApiService();
                         
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('$testName added to cart!'),
-                              backgroundColor: Colors.green,
-                              duration: const Duration(seconds: 2),
-                            ),
+                        // Find the cart item ID by test name
+                        String? cartItemId;
+                        if (widget.cartData.isNotEmpty && widget.cartData['items'] != null) {
+                          final items = List<Map<String, dynamic>>.from(widget.cartData['items']);
+                          final matchingItem = items.firstWhere(
+                            (item) => item['test_name'] == testName,
+                            orElse: () => {},
                           );
+                          cartItemId = matchingItem['id']?.toString();
+                        }
+                        
+                        if (cartItemId != null) {
+                          final result = await apiService.removeFromCart(cartItemId);
+                          
+                          if (result['success']) {
+                            // Call parent's onRemoveFromCart to update UI
+                            await widget.onRemoveFromCart(testName);
+                            
+                            // Test removed from cart - no toast message needed
+                          } else {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(result['message'] ?? 'Failed to remove from cart'),
+                                  backgroundColor: Colors.red,
+                                  duration: const Duration(seconds: 2),
+                                ),
+                              );
+                            }
+                          }
+                        } else {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Could not find cart item to remove'),
+                                backgroundColor: Colors.red,
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
+                          }
                         }
                       } else {
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(result['message'] ?? 'Failed to add to cart'),
-                              backgroundColor: Colors.red,
-                              duration: const Duration(seconds: 2),
-                            ),
-                          );
+                        // Add to cart
+                        final apiService = ApiService();
+                        final result = await apiService.addToCart(
+                          price: 0.0, // Default price, will be updated by server
+                          testName: testName,
+                          labTestId: diag['id']?.toString() ?? 'default_test_id',
+                          preferredDate: null,
+                          preferredTime: null,
+                        );
+                        
+                        if (result['success']) {
+                          // Call parent's onAddToCart to update UI
+                          await widget.onAddToCart(testName);
+                          
+                          // Test added to cart - no toast message needed
+                        } else {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(result['message'] ?? 'Failed to add to cart'),
+                                backgroundColor: Colors.red,
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
+                          }
                         }
                       }
                     } catch (e) {
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content: Text('Error adding to cart: ${e.toString()}'),
+                            content: Text('Error: ${e.toString()}'),
                             backgroundColor: Colors.red,
                             duration: const Duration(seconds: 2),
                           ),
@@ -6914,26 +7980,27 @@ class _TopDiagnosticsCarouselState extends State<_TopDiagnosticsCarousel> {
                 ),
               );
             },
+            ),
           ),
-        ),
         const SizedBox(height: 8),
-        if (!isLoading && diagnostics.isNotEmpty)
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: List.generate(diagnostics.length, (index) {
-            final bool isActive = _currentPage == index;
-            return AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              margin: const EdgeInsets.symmetric(horizontal: 3),
-              width: isActive ? 22 : 8,
-              height: 8,
-              decoration: BoxDecoration(
-                color: isActive ? Colors.white : Colors.white.withOpacity(0.5),
-                borderRadius: BorderRadius.circular(8),
-              ),
-            );
-          }),
-        ),
+        !isLoading && diagnostics.isNotEmpty
+            ? Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(diagnostics.length, (index) {
+                  final bool isActive = _currentPage == index;
+                  return AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    margin: const EdgeInsets.symmetric(horizontal: 3),
+                    width: isActive ? 22 : 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: isActive ? Colors.white : Colors.white.withOpacity(0.5),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  );
+                }),
+              )
+            : Container(),
       ],
     );
   }
@@ -6943,17 +8010,19 @@ class _DiagnosticsTestCard extends StatefulWidget {
   final String title;
   final String reportTime;
   final String alsoKnownAs;
-  final Future<void> Function() onAdd;
+  final Future<void> Function() onToggleCart;
   final VoidCallback onViewDetails;
   final bool isInCart;
+  final Map<String, dynamic> cartData;
 
   const _DiagnosticsTestCard({
     required this.title,
     required this.reportTime,
     required this.alsoKnownAs,
-    required this.onAdd,
+    required this.onToggleCart,
     required this.onViewDetails,
     required this.isInCart,
+    required this.cartData,
   });
 
   @override
@@ -7003,6 +8072,7 @@ class _DiagnosticsTestCardState extends State<_DiagnosticsTestCard> {
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -7024,7 +8094,7 @@ class _DiagnosticsTestCardState extends State<_DiagnosticsTestCard> {
                     });
                     
                     try {
-                      await widget.onAdd();
+                      await widget.onToggleCart();
                       // Don't set _isAdded here as it will be updated by didUpdateWidget
                       setState(() {
                         _isLoading = false;
@@ -7066,7 +8136,7 @@ class _DiagnosticsTestCardState extends State<_DiagnosticsTestCard> {
                 ),
               ],
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 4),
             Row(
               children: [
                 const Icon(Icons.receipt_long, color: Color(0xFF6C7A89), size: 18),
@@ -7075,7 +8145,7 @@ class _DiagnosticsTestCardState extends State<_DiagnosticsTestCard> {
                   'Reports Within',
                   style: TextStyle(
                     color: Color(0xFF6C7A89),
-                    fontSize: 15,
+                    fontSize: 12,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -7085,14 +8155,15 @@ class _DiagnosticsTestCardState extends State<_DiagnosticsTestCard> {
                   style: const TextStyle(
                     color: Color(0xFFFF8C32),
                     fontWeight: FontWeight.bold,
-                    fontSize: 15,
+                    fontSize: 12,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 4),
             const Divider(height: 18, thickness: 1.1, color: Color(0xFFE0E0E0)),
-            Row(
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
                   'Also Known as',
@@ -7100,20 +8171,19 @@ class _DiagnosticsTestCardState extends State<_DiagnosticsTestCard> {
                     color: Color(0xFFFF8C32),
                     fontStyle: FontStyle.italic,
                     fontWeight: FontWeight.w500,
-                    fontSize: 14,
+                    fontSize: 12,
                   ),
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(height: 4),
                 Text(
                   widget.alsoKnownAs,
                   style: const TextStyle(
                     color: Color(0xFF6C7A89),
-                    fontSize: 14,
+                    fontSize: 12,
                   ),
                 ),
               ],
             ),
-            const Spacer(),
           ],
         ),
       ),
@@ -7139,33 +8209,33 @@ class _WomenCareGrid extends StatelessWidget {
       {
         'icon': Icons.female,
         'label': 'PCOD Screening',
-        'category': 'pcod_screening',
+        'category': 'PCOD Screening',
       },
       {
         'icon': Icons.bloodtype,
         'label': 'Blood Studies',
-        'category': 'blood_studies',
+        'category': 'Blood Studies',
       },
       {
         'icon': Icons.pregnant_woman,
         'label': 'Pregnancy',
-        'category': 'pregnancy_tests',
+        'category': 'Pregnancy',
       },
       {
         'icon': Icons.medication_outlined,
         'label': 'Iron Studies',
-        'category': 'iron_studies',
+        'category': 'Iron Studies',
       },
       {
         'icon': Icons.abc,
         'label': 'Vitamin',
-        'category': 'vitamin_tests',
+        'category': 'Vitamin',
       },
-      {
-        'icon': Icons.bug_report,
-        'label': 'Viral organs / Diseases',
-        'category': 'viral_organs_diseases',
-      },
+      // {
+      //   'icon': Icons.bug_report,
+      //   'label': 'Viral organs / Diseases',
+      //   'category': 'Viral organs / Diseases',
+      // },
     ];
     // Use outlined icons and left-align content
     final outlinedIcons = [
@@ -7176,6 +8246,124 @@ class _WomenCareGrid extends StatelessWidget {
       Icons.abc_outlined,
       Icons.bug_report_outlined,
     ];
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8.0),
+      child: GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: items.length,
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          mainAxisSpacing: 16,
+          crossAxisSpacing: 16,
+          childAspectRatio: 2.7,
+        ),
+        itemBuilder: (context, index) {
+          final item = items[index];
+          return GestureDetector(
+            onTap: () => _navigateToTestsWithCategory(
+              context, 
+              item['category'] as String,
+            ),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE0E0E0)),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Icon(outlinedIcons[index], color: Colors.black, size: 36),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Text(
+                        item['label'] as String,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w500,
+                          fontSize: 14,
+                          color: Colors.black,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _VitalOrgansGrid extends StatelessWidget {
+  const _VitalOrgansGrid();
+
+  void _navigateToTestsWithCategory(BuildContext context, String category, {int? tabIndex}) {
+    // Find the LandingPageState to access the tab controller
+    final landingPageState = context.findAncestorStateOfType<_LandingPageState>();
+    if (landingPageState != null) {
+      // Navigate to Tests tab (index 1) and pass the category and tab index
+      landingPageState._navigateToTestsTab(category, tabIndex: tabIndex);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final items = [
+      {
+        'icon': Icons.favorite,
+        'label': 'Heart',
+        'category': 'Heart',
+      },
+      {
+        'icon': Icons.medical_services,
+        'label': 'Liver',
+        'category': 'Liver',
+      },
+      {
+        'icon': Icons.water_drop,
+        'label': 'Kidney',
+        'category': 'Kidney',
+      },
+      {
+        'icon': Icons.psychology,
+        'label': 'Thyroid',
+        'category': 'Thyroid',
+      },
+      {
+        'icon': Icons.air,
+        'label': 'Lungs',
+        'category': 'Lungs',
+      },
+      {
+        'icon': Icons.accessibility_new,
+        'label': 'Bone & Joint',
+        'category': 'Bone & Joint',
+      },
+      {
+        'icon': Icons.bloodtype,
+        'label': 'Blood',
+        'category': 'Blood',
+      },
+    ];
+    
+    // Use outlined icons and left-align content
+    final outlinedIcons = [
+      Icons.favorite_outlined,
+      Icons.medical_services_outlined,
+      Icons.water_drop_outlined,
+      Icons.psychology_outlined,
+      Icons.air_outlined,
+      Icons.accessibility_new_outlined,
+      Icons.bloodtype_outlined,
+    ];
+    
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8.0),
       child: GridView.builder(
@@ -7313,6 +8501,709 @@ class _HelpBookingCard extends StatelessWidget {
   }
 }
 
+// Reschedule Appointment Dialog
+class _RescheduleAppointmentDialog extends StatefulWidget {
+  final String currentDate;
+  final DateTime? currentDateTime;
+  final String organizationId;
+  final String appointmentId;
+  
+  const _RescheduleAppointmentDialog({
+    required this.currentDate,
+    this.currentDateTime,
+    required this.organizationId,
+    required this.appointmentId,
+  });
+
+  @override
+  _RescheduleAppointmentDialogState createState() => _RescheduleAppointmentDialogState();
+}
+
+class _RescheduleAppointmentDialogState extends State<_RescheduleAppointmentDialog> {
+  DateTime? _selectedDate;
+  String? _selectedTimeslot;
+  Map<String, dynamic>? _timeslotData;
+  bool _isLoadingTimeslots = false;
+  String? _organizationId;
+  
+  @override
+  void initState() {
+    super.initState();
+    // Don't initialize with any date by default - user must select
+    _selectedDate = null;
+    
+    // Extract organization ID from the order data passed to the dialog
+    // This will be passed from the parent when calling the dialog
+  }
+
+  String _formatTimeTo12Hour(String time24) {
+    if (time24.isEmpty) return '';
+    
+    try {
+      // Parse 24-hour format (e.g., "09:00", "14:30")
+      final parts = time24.split(':');
+      if (parts.length != 2) return time24;
+      
+      int hour = int.parse(parts[0]);
+      int minute = int.parse(parts[1]);
+      
+      String period = hour >= 12 ? 'PM' : 'AM';
+      if (hour == 0) {
+        hour = 12;
+      } else if (hour > 12) hour -= 12;
+      
+      return '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')} $period';
+    } catch (e) {
+      return time24; // Return original if parsing fails
+    }
+  }
+
+  String _formatTimeRange(String startTime, String endTime) {
+    if (startTime.isEmpty || endTime.isEmpty) return '';
+    
+    String formattedStart = _formatTimeTo12Hour(startTime);
+    String formattedEnd = _formatTimeTo12Hour(endTime);
+    
+    return '$formattedStart - $formattedEnd';
+  }
+  
+  Future<void> _selectDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate ?? DateTime.now(),
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: AppColors.primaryBlue,
+              onPrimary: Colors.white,
+              onSurface: Colors.black,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null && picked != _selectedDate) {
+      setState(() {
+        _selectedDate = picked;
+        _selectedTimeslot = null; // Reset timeslot when date changes
+      });
+      // Load timeslots for the new date
+      await _loadTimeslots();
+    }
+  }
+
+  Future<void> _loadTimeslots() async {
+    if (_selectedDate == null) {
+      setState(() {
+        _timeslotData = null;
+        _isLoadingTimeslots = false;
+      });
+      return;
+    }
+    
+    setState(() {
+      _isLoadingTimeslots = true;
+    });
+    
+    try {
+      final apiService = ApiService();
+      final result = await apiService.getOrganizationTimeslots(
+        orgId: widget.organizationId,
+        date: _selectedDate!.toIso8601String().split('T')[0],
+      );
+      
+      if (result['success'] && result['data'] != null) {
+        setState(() {
+          _timeslotData = result['data'];
+          _isLoadingTimeslots = false;
+        });
+      } else {
+        setState(() {
+          _timeslotData = null;
+          _isLoadingTimeslots = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _timeslotData = null;
+        _isLoadingTimeslots = false;
+      });
+    }
+  }
+
+  void _showTimeslotSelectionBottomSheet() {
+    if (_selectedDate == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select a date first to view available time slots'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+    
+    if (_timeslotData == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please wait while timeslots are being loaded'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        height: MediaQuery.of(context).size.height * 0.8,
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(20),
+            topRight: Radius.circular(20),
+          ),
+        ),
+        child: Column(
+          children: [
+            // Handle bar
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            // Header
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Select Time Slot',
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black,
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text(
+                      'Close',
+                      style: TextStyle(
+                        color: AppColors.primaryBlue,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            // Timeslots list
+            Expanded(
+              child: _isLoadingTimeslots
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryBlue),
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(20),
+                      itemCount: (_timeslotData?['timeslots'] as List<dynamic>?)?.length ?? 0,
+                      itemBuilder: (context, index) {
+                        final session = (_timeslotData?['timeslots'] as List<dynamic>)[index];
+                        final sessionName = session['session_name'] ?? '';
+                        final slots = List<Map<String, dynamic>>.from(session['slots'] ?? []);
+                        
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.grey[200]!),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Session header
+                              Container(
+                                padding: const EdgeInsets.all(20),
+                                decoration: BoxDecoration(
+                                  color: AppColors.primaryBlue.withOpacity(0.1),
+                                  borderRadius: const BorderRadius.only(
+                                    topLeft: Radius.circular(12),
+                                    topRight: Radius.circular(12),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.access_time,
+                                      color: AppColors.primaryBlue,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      sessionName,
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppColors.primaryBlue,
+                                      ),
+                                    ),
+                                    const Spacer(),
+                                    Text(
+                                      '${session['session_start']} - ${session['session_end']}',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              // Slots grid (3 per row)
+                              Padding(
+                                padding: const EdgeInsets.all(20),
+                                child: Column(
+                                  children: List.generate(
+                                    (slots.length / 3).ceil(),
+                                    (rowIndex) {
+                                      final startIndex = rowIndex * 3;
+                                      final endIndex = (startIndex + 3 <= slots.length) ? startIndex + 3 : slots.length;
+                                      final rowSlots = slots.sublist(startIndex, endIndex);
+                                      
+                                      return Padding(
+                                        padding: const EdgeInsets.only(bottom: 8),
+                                        child: Row(
+                                          children: [
+                                            ...rowSlots.asMap().entries.map((entry) {
+                                              final index = entry.key;
+                                              final slot = entry.value;
+                                              return [
+                                                _buildSlotItem(slot, sessionName),
+                                                if (index < rowSlots.length - 1) const SizedBox(width: 8),
+                                              ];
+                                            }).expand((element) => element),
+                                            // Fill remaining space if less than 3 slots in this row
+                                            ...List.generate(
+                                              3 - rowSlots.length,
+                                              (index) => const Expanded(child: SizedBox()),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSlotItem(Map<String, dynamic> slot, String sessionName) {
+    final isAvailable = slot['status'] == 'available';
+    final isSelected = _selectedTimeslot == '${slot['start_time']} - ${slot['end_time']}';
+    
+    return Expanded(
+      child: InkWell(
+        onTap: isAvailable ? () {
+          setState(() {
+            _selectedTimeslot = '${slot['start_time']} - ${slot['end_time']}';
+          });
+          // Close the bottom sheet after selection
+          Navigator.pop(context);
+        } : null,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: isSelected 
+                ? AppColors.primaryBlue 
+                : isAvailable 
+                    ? Colors.white
+                    : Colors.grey[100],
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: isSelected 
+                  ? AppColors.primaryBlue 
+                  : isAvailable
+                      ? AppColors.primaryBlue.withOpacity(0.3)
+                      : Colors.grey[300]!,
+              width: isSelected ? 2 : 1,
+            ),
+          ),
+          child: Center(
+            child: Text(
+              _formatTimeRange(slot['start_time'] ?? '', slot['end_time'] ?? ''),
+              style: TextStyle(
+                fontSize: 9,
+                fontWeight: FontWeight.w600,
+                color: isSelected 
+                    ? Colors.white 
+                    : isAvailable 
+                        ? AppColors.primaryBlue 
+                        : Colors.grey[500],
+              ),
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  
+  
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text(
+        'Reschedule Appointment',
+        style: TextStyle(
+          fontSize: 20,
+          fontWeight: FontWeight.w600,
+          color: Color(0xFF1E293B),
+        ),
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Current appointment date
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.grey[100],
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.grey[300]!),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.info_outline, color: Colors.grey, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Current: ${widget.currentDate}',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          
+          // New date selection
+          const Text(
+            'Select New Date:',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF374151),
+            ),
+          ),
+          const SizedBox(height: 8),
+          InkWell(
+            onTap: () => _selectDate(context),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                border: Border.all(color: AppColors.primaryBlue),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.calendar_today, color: AppColors.primaryBlue),
+                  const SizedBox(width: 8),
+                  Text(
+                    _selectedDate != null 
+                        ? '${_selectedDate!.day}/${_selectedDate!.month}/${_selectedDate!.year}'
+                        : 'Tap to select date',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: _selectedDate != null ? Colors.black : Colors.grey[500],
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const Spacer(),
+                  const Icon(Icons.arrow_drop_down, color: AppColors.primaryBlue),
+                ],
+              ),
+            ),
+          ),
+          if (_selectedDate == null) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Select a date to view available time slots',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey[600],
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ] else if (_timeslotData == null) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Loading available time slots...',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey[600],
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ],
+          const SizedBox(height: 16),
+          
+          // New timeslot selection
+          const Text(
+            'Select New Time Slot:',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF374151),
+            ),
+          ),
+          const SizedBox(height: 8),
+          
+          // Timeslot field (similar to date field)
+          InkWell(
+            onTap: (_selectedDate != null && _timeslotData != null) ? () => _showTimeslotSelectionBottomSheet() : null,
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: (_selectedDate == null || _timeslotData == null) ? Colors.grey[300]! : AppColors.primaryBlue
+                ),
+                borderRadius: BorderRadius.circular(8),
+                color: (_selectedDate == null || _timeslotData == null) ? Colors.grey[50] : Colors.white,
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.access_time, 
+                    color: (_selectedDate == null || _timeslotData == null) ? Colors.grey[400] : AppColors.primaryBlue
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    _selectedTimeslot != null 
+                        ? _selectedTimeslot!
+                        : _selectedDate == null 
+                            ? 'Select date first'
+                            : _timeslotData == null
+                                ? 'Loading timeslots...'
+                                : 'Select Time Slot',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: _selectedTimeslot != null 
+                          ? Colors.black 
+                          : (_selectedDate == null || _timeslotData == null)
+                              ? Colors.grey[400]
+                              : Colors.grey[500],
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const Spacer(),
+                  Icon(
+                    Icons.arrow_drop_down, 
+                    color: (_selectedDate == null || _timeslotData == null) ? Colors.grey[400] : AppColors.primaryBlue
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_selectedDate != null && _selectedTimeslot == null) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Select a time slot to proceed',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey[600],
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () => Navigator.of(context).pop(),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  side: const BorderSide(color: AppColors.primaryBlue),
+                  foregroundColor: AppColors.primaryBlue,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: const Text(
+                  'Cancel',
+                  style: TextStyle(
+                    color: AppColors.primaryBlue,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: ElevatedButton(
+                onPressed: (_selectedDate != null && _selectedTimeslot != null) ? () async {
+                  // Both date and timeslot are selected, proceed with reschedule
+                  
+                  // Parse the selected timeslot to get the time
+                  final timeParts = _selectedTimeslot!.split(' - ')[0].split(':');
+                  final hour = int.parse(timeParts[0]);
+                  final minute = int.parse(timeParts[1]);
+                  
+                  // Combine date and time
+                  final newDateTime = DateTime(
+                    _selectedDate!.year,
+                    _selectedDate!.month,
+                    _selectedDate!.day,
+                    hour,
+                    minute,
+                  );
+                  
+                  try {
+                    // Show loading dialog
+                    showDialog(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (context) => AlertDialog(
+                        backgroundColor: AppColors.primaryBlue,
+                        content: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const CircularProgressIndicator(
+                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'Rescheduling appointment...',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                    
+                    final apiService = ApiService();
+                    final rescheduleResult = await apiService.rescheduleAppointment(
+                      appointmentId: widget.appointmentId,
+                      newDateTime: newDateTime,
+                      context: context,
+                    );
+                    
+                    // Close loading dialog
+                    if (mounted) Navigator.of(context).pop();
+                    
+                    if (rescheduleResult['success'] == true) {
+                      // Show success message
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Appointment rescheduled successfully'),
+                            backgroundColor: Colors.green,
+                          ),
+                        );
+                      }
+                      
+                      // Close the reschedule dialog and return success
+                      Navigator.of(context).pop({
+                        'confirmed': true,
+                        'newDateTime': newDateTime,
+                        'success': true,
+                      });
+                    } else {
+                      // Show error message
+                      if (mounted) {
+                        Navigator.of(context).pop();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(rescheduleResult['message'] ?? 'Failed to reschedule appointment'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    }
+                  } catch (e) {
+                    // Close loading dialog if still open
+                    if (mounted) Navigator.of(context).pop();
+                    
+                    // Show error message
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Error: $e'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  }
+                } : null,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: (_selectedDate != null && _selectedTimeslot != null) 
+                      ? AppColors.primaryBlue 
+                      : Colors.grey[400],
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: Text(
+                  _selectedDate == null 
+                      ? 'Select Date First'
+                      : _selectedTimeslot == null 
+                          ? 'Select Time Slot'
+                          : 'Confirm',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
 // Cancel Appointment Dialog
 class _CancelAppointmentDialog extends StatefulWidget {
   @override
@@ -7321,7 +9212,6 @@ class _CancelAppointmentDialog extends StatefulWidget {
 
 class _CancelAppointmentDialogState extends State<_CancelAppointmentDialog> {
   final TextEditingController _reasonController = TextEditingController();
-  bool _refundToWallet = true;
   
   @override
   void dispose() {
@@ -7363,29 +9253,7 @@ class _CancelAppointmentDialogState extends State<_CancelAppointmentDialog> {
               contentPadding: const EdgeInsets.all(12),
             ),
           ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Checkbox(
-                value: _refundToWallet,
-                onChanged: (value) {
-                  setState(() {
-                    _refundToWallet = value ?? true;
-                  });
-                },
-                activeColor: AppColors.primaryBlue,
-              ),
-              const Expanded(
-                child: Text(
-                  'Refund amount to wallet',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Color(0xFF374151),
-                  ),
-                ),
-              ),
-            ],
-          ),
+                    const SizedBox(height: 16),
         ],
       ),
       actions: [
@@ -7414,7 +9282,6 @@ class _CancelAppointmentDialogState extends State<_CancelAppointmentDialog> {
             Navigator.of(context).pop({
               'confirmed': true,
               'reason': reason,
-              'refundToWallet': _refundToWallet,
             });
           },
           style: ElevatedButton.styleFrom(
@@ -7426,4 +9293,287 @@ class _CancelAppointmentDialogState extends State<_CancelAppointmentDialog> {
       ],
     );
   }
-} 
+}
+
+// Cart Summary Bottom Sheet Widget
+class _CartSummaryBottomSheet extends StatefulWidget {
+  final Set<String> cartItems;
+  final Map<String, dynamic> cartData;
+  final VoidCallback onCartChanged;
+  final VoidCallback onProceedToCheckout;
+
+  const _CartSummaryBottomSheet({
+    required this.cartItems,
+    required this.cartData,
+    required this.onCartChanged,
+    required this.onProceedToCheckout,
+  });
+
+  @override
+  State<_CartSummaryBottomSheet> createState() => _CartSummaryBottomSheetState();
+}
+
+class _CartSummaryBottomSheetState extends State<_CartSummaryBottomSheet> {
+  late Set<String> _cartItems;
+  late Map<String, dynamic> _cartData;
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _cartItems = Set<String>.from(widget.cartItems);
+    _cartData = Map<String, dynamic>.from(widget.cartData);
+    // Refresh cart data when bottom sheet opens to ensure latest data
+    _refreshCartData();
+  }
+
+  Future<void> _refreshCartData() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final apiService = ApiService();
+      final result = await apiService.getCart();
+      
+      if (result['success'] && mounted) {
+        final cartData = result['data'];
+        final items = List<Map<String, dynamic>>.from(cartData['items'] ?? []);
+        
+        // Extract package/test names from cart items to sync local state
+        final Set<String> serverCartItems = items.map((item) {
+          final testName = item['test_name']?.toString();
+          final packageName = item['package_name']?.toString();
+          
+          return testName?.isNotEmpty == true ? testName! :
+                 packageName?.isNotEmpty == true ? packageName! :
+                 item['id']?.toString() ?? '';
+        }).where((name) => name.isNotEmpty).toSet();
+        
+        setState(() {
+          _cartData = cartData;
+          _cartItems = serverCartItems;
+        });
+      }
+    } catch (e) {
+      print('❌ CART REFRESH ERROR: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.7,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(20),
+          topRight: Radius.circular(20),
+        ),
+      ),
+      child: Column(
+        children: [
+          // Handle bar
+          Container(
+            margin: const EdgeInsets.only(top: 8),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          
+          // Header
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.shopping_cart,
+                  color: AppColors.primaryBlue,
+                  size: 24,
+                ),
+                const SizedBox(width: 12),
+                const Text(
+                  'Cart Summary',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black,
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close),
+                ),
+              ],
+            ),
+          ),
+          
+          // Cart items list
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _cartItems.isEmpty
+                    ? const Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.shopping_cart_outlined,
+                              size: 64,
+                              color: Colors.grey,
+                            ),
+                            SizedBox(height: 16),
+                            Text(
+                              'Your cart is empty',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.grey,
+                              ),
+                            ),
+                            SizedBox(height: 8),
+                            Text(
+                              'Add some tests or packages to get started',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        itemCount: _cartData['items']?.length ?? 0,
+                        itemBuilder: (context, index) {
+                          final cartItem = _cartData['items'][index];
+                          final itemName = cartItem['test_name'] ?? cartItem['package_name'] ?? 'Item';
+                          final itemType = cartItem['lab_test_id'] != null ? 'Test' : 'Package';
+                          final itemId = cartItem['id'] ?? cartItem['lab_test_id'] ?? cartItem['lab_package_id'] ?? '';
+                          
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            child: ListTile(
+                              leading: Icon(
+                                itemType == 'Test' ? Icons.science : Icons.inventory,
+                                color: AppColors.primaryBlue,
+                              ),
+                              title: Text(
+                                itemName,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    itemType,
+                                    style: TextStyle(
+                                      color: Colors.grey[600],
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                  if (cartItem['price'] != null && itemType == 'Package')
+                                    Text(
+                                      '₹${cartItem['discounted_amount'] ?? cartItem['price']}',
+                                      style: const TextStyle(
+                                        color: AppColors.primaryBlue,
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              trailing: IconButton(
+                                icon: const Icon(
+                                  Icons.remove_circle_outline,
+                                  color: Colors.red,
+                                ),
+                                onPressed: () async {
+                                  // Show loading indicator
+                                  showDialog(
+                                    context: context,
+                                    barrierDismissible: false,
+                                    builder: (BuildContext context) {
+                                      return const Center(
+                                        child: CircularProgressIndicator(),
+                                      );
+                                    },
+                                  );
+                                  
+                                  try {
+                                    // Remove from database via API
+                                    final apiService = ApiService();
+                                    final result = await apiService.removeFromCart(itemId);
+                                    
+                                    if (result['success']) {
+                                      // Close loading dialog
+                                      Navigator.pop(context);
+                                      
+                                      // Refresh cart data
+                                      await _refreshCartData();
+                                      
+                                      // Notify parent widget to refresh cart data
+                                      widget.onCartChanged();
+                                      
+                                      // Item removed successfully - no toast message needed
+                                    } else {
+                                      // Close loading dialog
+                                      Navigator.pop(context);
+                                      
+                                      // Error removing item - no toast message needed
+                                    }
+                                  } catch (e) {
+                                    // Close loading dialog
+                                    Navigator.pop(context);
+                                    
+                                    // Error removing item - no toast message needed
+                                  }
+                                },
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+          ),
+          
+          // Proceed button
+          Container(
+            padding: const EdgeInsets.all(20),
+            child: ElevatedButton(
+              onPressed: _cartItems.isEmpty ? null : () {
+                widget.onProceedToCheckout();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _cartItems.isEmpty ? Colors.grey : AppColors.primaryBlue,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(double.infinity, 50),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: Text(
+                _cartItems.isEmpty ? 'Cart is Empty' : 'Proceed to Checkout',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

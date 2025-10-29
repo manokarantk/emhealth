@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../constants/colors.dart';
 import '../services/intro_service.dart';
 import '../services/token_service.dart';
+import '../services/location_service.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -29,9 +30,27 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
     _controller.forward();
 
-    // Check authentication and intro status, then navigate accordingly
+    // Initialize location and check authentication/intro status, then navigate accordingly
     Future.delayed(const Duration(seconds: 3), () async {
       try {
+        // Initialize location service and get stored location
+        final locationService = LocationService();
+        
+        // Check if we have stored location, if not, try to get it
+        final storedLocation = await locationService.getStoredLocation();
+        if (storedLocation == null) {
+          print('📍 SplashScreen: No stored location found, attempting to get current location...');
+          try {
+            await locationService.getAndStoreLocation(context);
+            print('📍 SplashScreen: Location initialized successfully');
+          } catch (e) {
+            print('📍 SplashScreen: Failed to initialize location: $e');
+            // Continue without location - user can update it later
+          }
+        } else {
+          print('📍 SplashScreen: Using stored location: $storedLocation');
+        }
+        
         final isAuthenticated = await TokenService.isAuthenticated();
         final hasSeenIntro = await IntroService.hasSeenIntro();
         

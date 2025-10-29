@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import '../constants/colors.dart';
+import '../constants/api_config.dart';
 import '../services/api_service.dart';
 import '../services/storage_service.dart';
 import 'tests_listing_screen.dart';
-import 'family_members_screen.dart';
-import 'addresses_screen.dart';
+import '../widgets/add_family_member_bottom_sheet.dart';
+import '../widgets/add_address_bottom_sheet.dart';
 
 
 class CheckoutScreen extends StatefulWidget {
@@ -19,6 +20,7 @@ class CheckoutScreen extends StatefulWidget {
   final Map<String, dynamic> cartData;
   final Function(String)? onRemoveFromCart; // Callback for removing items from cart
   final VoidCallback? onCartCleared; // Callback for when entire cart is cleared
+  final VoidCallback? onCartChanged; // Callback for when cart is modified (added/removed items)
   final Map<String, dynamic>? multiLabData; // For multi-lab bookings
   final Map<String, dynamic>? schedulingData; // For single lab scheduling
 
@@ -35,6 +37,7 @@ class CheckoutScreen extends StatefulWidget {
     required this.cartData,
     this.onRemoveFromCart, // Optional callback
     this.onCartCleared, // Optional callback for cart clearing
+    this.onCartChanged, // Optional callback for cart changes
     this.multiLabData, // Optional multi-lab data
     this.schedulingData, // Optional scheduling data
   });
@@ -51,8 +54,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   Map<String, String> packageIdToName = {}; // Map package IDs to package names
   String selectedPaymentMethod = 'Online Payment';
   bool isHomeCollection = true;
-  DateTime selectedDate = DateTime.now();
-  String selectedTime = '10:00 AM - 12:00 PM';
+  DateTime? selectedDate;
+  String? selectedTime;
   String selectedPatient = 'Myself';
   String? selectedAddress;
   bool useWalletBalance = false;
@@ -63,6 +66,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   String? couponCode;
   double couponDiscount = 0.0;
   String? couponError;
+  Map<String, dynamic>? homeCollectionFeesData; // Store home collection fees from API
   bool isApplyingCoupon = false;
   
   // Timeslot related variables
@@ -133,15 +137,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       }
     }
     
-    // Load timeslots for today's date if organization ID is available
-    if (widget.organizationId.isNotEmpty) {
-      print('🔄 Loading timeslots for initial date: $selectedDate');
-      print('🔄 Organization ID length: ${widget.organizationId.length}');
-      _loadTimeslots(selectedDate);
-    } else {
-      print('❌ Organization ID is empty, not loading timeslots');
-      print('❌ Organization ID value: "${widget.organizationId}"');
-    }
+    // Don't load timeslots until user selects a date
+    print('🔧 CheckoutScreen initialized - selectedDate: $selectedDate, selectedTime: $selectedTime');
     
     // Load dependents
     _loadDependents();
@@ -203,16 +200,39 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           isLoadingDependents = false;
         });
         print('🔄 Dependents loaded successfully. Count: ${_familyMembers.length}');
+        print('🔄 Family member names: ${_familyMembers.map((m) => m['name']).toList()}');
       } else {
         print('❌ Failed to load dependents: ${result['message']}');
+        // If API fails, still show "Myself" option
+        final List<Map<String, dynamic>> fallbackDependents = [
+          {
+            'name': 'Myself',
+            'relation': 'Account Holder',
+            'age': 28,
+            'gender': 'Male',
+            'isPrimary': true,
+          }
+        ];
         setState(() {
+          _familyMembers = fallbackDependents;
           dependentsError = result['message'] ?? 'Failed to load dependents';
           isLoadingDependents = false;
         });
       }
     } catch (e) {
       print('❌ Error loading dependents: $e');
+      // If there's an error, still show "Myself" option
+      final List<Map<String, dynamic>> fallbackDependents = [
+        {
+          'name': 'Myself',
+          'relation': 'Account Holder',
+          'age': 28,
+          'gender': 'Male',
+          'isPrimary': true,
+        }
+      ];
       setState(() {
+        _familyMembers = fallbackDependents;
         dependentsError = 'Network error occurred';
         isLoadingDependents = false;
       });
@@ -263,6 +283,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             'isDefault': address['is_primary'] == true,
             'contact_number': address['contact_number'],
             'country': address['country'],
+            'latitude': address['latitude'], // Include latitude
+            'longitude': address['longitude'], // Include longitude
           };
           convertedAddresses.add(convertedAddress);
           print('🔄 Converted address: $convertedAddress');
@@ -274,6 +296,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           isLoadingAddresses = false;
         });
         print('🔄 Addresses loaded successfully. Count: ${_addresses.length}');
+        print('🔄 First address sample: ${_addresses.isNotEmpty ? _addresses.first : 'No addresses'}');
       } else {
         print('❌ Failed to load addresses: ${result['message']}');
         setState(() {
@@ -593,16 +616,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             widget.onRemoveFromCart!(itemId);
           }
           
-          // Show success message
-          final itemName = isPackage 
-              ? (packageIdToName[itemId] ?? itemId)
-              : (testIdToName[itemId] ?? itemId);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('$itemName removed from cart'),
-              backgroundColor: Colors.green,
-            ),
-          );
+          // Item removed from cart - no toast message needed
         } else {
           print('❌ Failed to remove item from cart: ${result['message']}');
           final itemName = isPackage 
@@ -668,6 +682,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
     try {
       // Validate required fields
+      if (selectedDate == null) {
+        throw Exception('Please select an appointment date');
+      }
+      
+      if (selectedTime == null) {
+        throw Exception('Please select an appointment time');
+      }
+      
       if (isHomeCollection && selectedAddress == null) {
         throw Exception('Please select a delivery address for home collection');
       }
@@ -811,8 +833,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       }
       
       // Format date and time
-      final appointmentDate = selectedDate.toIso8601String().split('T')[0];
-      final appointmentTime = selectedTime;
+      final appointmentDate = selectedDate!.toIso8601String().split('T')[0];
+      final appointmentTime = selectedTime!;
       
       // Determine payment mode using helper function
       String paymentMode = _getApiPaymentMode(selectedPaymentMethod);
@@ -947,6 +969,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     
     setState(() {
       isLoadingTimeslots = true;
+      selectedTime = null; // Clear selected time when loading new timeslots
     });
     
     try {
@@ -1149,7 +1172,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.8,
+        height: (MediaQuery.of(context).size.height * 0.8).clamp(300.0, MediaQuery.of(context).size.height),
         decoration: const BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.only(
@@ -1266,7 +1289,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                 padding: const EdgeInsets.all(16),
                                 child: () {
                                   // Filter future slots
-                                  final futureSlots = _filterFutureSlots(slots, selectedDate);
+                                  final futureSlots = _filterFutureSlots(slots, selectedDate!);
                                   
                                   if (futureSlots.isEmpty) {
                                     return const Center(
@@ -1339,6 +1362,23 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     return _calculateTotalDiscountedPrice();
   }
 
+  // Calculate total home collection fee from API data
+  double get totalHomeCollectionFee {
+    if (homeCollectionFeesData == null || homeCollectionFeesData!['lab_fees'] == null) {
+      return ApiConfig.homeCollectionFee; // Fallback to static fee
+    }
+    
+    double totalFee = 0.0;
+    final labFees = homeCollectionFeesData!['lab_fees'] as List;
+    
+    for (final labFee in labFees) {
+      final fee = double.tryParse(labFee['collection_fee']?.toString() ?? '0') ?? 0.0;
+      totalFee += fee;
+    }
+    
+    return totalFee;
+  }
+
   // Calculate total original price from current cart items
   double _calculateTotalOriginalPrice() {
     double total = 0.0;
@@ -1399,17 +1439,27 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     print('🔍   useWalletBalance: $useWalletBalance');
     print('🔍   walletCoversFullAmount: $walletCoversFullAmount');
     print('🔍   shouldApplyDiscount: $shouldApplyDiscount');
+    print('🔍   isHomeCollection: $isHomeCollection');
+    
+    double baseAmount;
     
     // Use centralized discount logic
     if (shouldApplyDiscount) {
-      final discountedAmount = totalDiscountedPrice - couponDiscount;
-      print('🔍   Using discounted price: $totalDiscountedPrice - $couponDiscount = $discountedAmount');
-      return discountedAmount;
+      baseAmount = totalDiscountedPrice - couponDiscount;
+      print('🔍   Using discounted price: $totalDiscountedPrice - $couponDiscount = $baseAmount');
     } else {
-      final originalAmount = totalOriginalPrice - couponDiscount;
-      print('🔍   Using original price: $totalOriginalPrice - $couponDiscount = $originalAmount');
-      return originalAmount;
+      baseAmount = totalOriginalPrice - couponDiscount;
+      print('🔍   Using original price: $totalOriginalPrice - $couponDiscount = $baseAmount');
     }
+    
+    // Add home collection fee if home collection is selected AND address is chosen
+    if (isHomeCollection && selectedAddress != null) {
+      final finalAmount = baseAmount + totalHomeCollectionFee;
+      print('🔍   Adding home collection fee: $baseAmount + $totalHomeCollectionFee = $finalAmount');
+      return finalAmount;
+    }
+    
+    return baseAmount;
   }
 
   // Get the amount to pay after wallet deduction
@@ -1418,15 +1468,48 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       return actualPayableAmount;
     }
     
-    final amountToPay = actualPayableAmount - walletBalance;
-    return amountToPay.clamp(0, actualPayableAmount);
+    // Calculate base amount (without home collection fee)
+    double baseAmount;
+    if (shouldApplyDiscount) {
+      baseAmount = totalDiscountedPrice - couponDiscount;
+    } else {
+      baseAmount = totalOriginalPrice - couponDiscount;
+    }
+    
+    // Add home collection fee if applicable (only when address is selected)
+    final totalAmount = (isHomeCollection && selectedAddress != null) ? baseAmount + totalHomeCollectionFee : baseAmount;
+    
+    // For wallet payments:
+    // - If wallet covers full amount: use total amount (including home collection fee)
+    // - If wallet covers partial amount: 
+    //   * With Online Payment: use discounted price for remaining amount
+    //   * With Pay at Collection: use original price for remaining amount
+      if (walletBalance >= totalAmount) {
+        // Full wallet payment - wallet covers everything including home collection fee
+        return 0.0;
+      } else {
+      // Partial wallet payment
+      if (selectedPaymentMethod == 'Online Payment') {
+        // Partial wallet + Online Payment: use discounted price for remaining amount
+        final discountedAmount = totalDiscountedPrice - couponDiscount;
+        final discountedTotal = (isHomeCollection && selectedAddress != null) ? discountedAmount + totalHomeCollectionFee : discountedAmount;
+        final amountToPay = discountedTotal - walletBalance;
+        return amountToPay.clamp(0, discountedTotal);
+      } else {
+        // Partial wallet + Pay at Collection: use original price for remaining amount
+        final originalAmount = totalOriginalPrice - couponDiscount;
+        final originalTotal = (isHomeCollection && selectedAddress != null) ? originalAmount + totalHomeCollectionFee : originalAmount;
+        final amountToPay = originalTotal - walletBalance;
+        return amountToPay.clamp(0, originalTotal);
+      }
+    }
   }
 
   // Check if discount should be applied
   bool get shouldApplyDiscount {
-    // Apply discount for online payments or wallet payments (consistent with multi-lab checkout)
-    final shouldApply = selectedPaymentMethod == 'Online Payment' || 
-                       (useWalletBalance && selectedPaymentMethod != 'Pay at Collection');
+    // Apply discount for online payments only
+    // For wallet payments: full wallet payment gets discount, partial wallet payment uses original price for remaining amount
+    final shouldApply = selectedPaymentMethod == 'Online Payment';
     
     print('🔍 shouldApplyDiscount: $shouldApply (payment: $selectedPaymentMethod, wallet: $useWalletBalance)');
     return shouldApply;
@@ -1434,9 +1517,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   // Check if wallet balance covers the full amount after coupon discount
   bool get walletCoversFullAmount {
-    // Check if wallet covers the discounted amount (which is what we want to check for full wallet payment)
-    final finalAmount = totalDiscountedPrice - couponDiscount;
-    return walletBalance >= finalAmount;
+    // Check if wallet covers the discounted amount for full wallet payment
+    final discountedAmount = totalDiscountedPrice - couponDiscount;
+    final totalAmount = (isHomeCollection && selectedAddress != null) ? discountedAmount + totalHomeCollectionFee : discountedAmount;
+    return walletBalance >= totalAmount;
   }
 
   // Check if payment methods should be disabled (when wallet covers full amount)
@@ -1445,13 +1529,85 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     return false;
   }
 
+  // Get home collection fees for selected address
+  Future<void> _getHomeCollectionFees(String? addressId) async {
+    print('📍 Single lab checkout - _getHomeCollectionFees method called with addressId: $addressId');
+    print('📍 Single lab checkout - isHomeCollection: $isHomeCollection');
+    
+    if (addressId == null) {
+      print('📍 Single lab checkout - addressId is null, returning early');
+      return;
+    }
+    
+    if (!isHomeCollection) {
+      print('📍 Single lab checkout - Home collection is disabled, not calling API');
+      return;
+    }
+    
+    print('📍 Single lab checkout - _getHomeCollectionFees called with addressId: $addressId');
+    print('📍 Single lab checkout - organizationId: ${widget.organizationId}');
+    
+    // Find the selected address to get coordinates
+    final selectedAddress = _addresses.firstWhere(
+      (address) => address['id']?.toString() == addressId,
+      orElse: () => {},
+    );
+
+    print('📍 Single lab checkout - Selected address found: $selectedAddress');
+
+    if (selectedAddress.isEmpty) {
+      print('📍 Single lab checkout - Selected address not found in _addresses list');
+      return;
+    }
+
+    // Check if address has coordinates, use defaults if not available
+    double parseCoordinate(dynamic value, double defaultValue) {
+      if (value == null) return defaultValue;
+      if (value is double) return value;
+      if (value is int) return value.toDouble();
+      if (value is String) {
+        return double.tryParse(value) ?? defaultValue;
+      }
+      return defaultValue;
+    }
+
+    final latitude = parseCoordinate(selectedAddress['latitude'], 13.067439); // Default latitude
+    final longitude = parseCoordinate(selectedAddress['longitude'], 80.237617); // Default longitude
+
+    print('📍 Single lab checkout - Using coordinates - lat: $latitude, lng: $longitude');
+
+    try {
+      print('📍 Single lab checkout - Getting home collection fees for address: $addressId, lab: ${widget.organizationId}');
+      
+      final apiService = ApiService();
+      final result = await apiService.getHomeCollectionFees(
+        labIds: [widget.organizationId],
+        pickupLat: latitude,
+        pickupLng: longitude,
+        context: context,
+      );
+
+      print('📍 Single lab checkout - Home collection fees result: $result');
+
+      if (result['success']) {
+        setState(() {
+          homeCollectionFeesData = result['data'];
+        });
+      } else {
+        print('📍 Single lab checkout - Failed to get home collection fees: ${result['message']}');
+      }
+    } catch (e) {
+      print('❌ Single lab checkout - Error getting home collection fees: $e');
+    }
+  }
+
   void _showAddMoreTestsBottomSheet() {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.8,
+        height: (MediaQuery.of(context).size.height * 0.8).clamp(300.0, MediaQuery.of(context).size.height),
         decoration: const BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.only(
@@ -1691,7 +1847,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     print('🔄 _showDatePicker called');
     final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: selectedDate,
+      initialDate: selectedDate ?? DateTime.now(),
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 30)),
       builder: (context, child) {
@@ -1713,7 +1869,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       
       setState(() {
         selectedDate = picked;
-        selectedTime = '10:00 AM - 12:00 PM'; // Reset time when date changes
+        selectedTime = null; // Clear time when date changes
         // Clear previous timeslot selections
         selectedSession = null;
         selectedSlot = null;
@@ -1733,241 +1889,49 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.6,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.only(
-            topLeft: Radius.circular(20),
-            topRight: Radius.circular(20),
-          ),
-        ),
-        child: Column(
-          children: [
-            // Handle bar
-            Container(
-              margin: const EdgeInsets.only(top: 12),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey[300],
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            // Header
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Select Patient',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black,
-                    ),
-                  ),
-                  Row(
-                    children: [
-                      IconButton(
-                        onPressed: _loadDependents,
-                        icon: const Icon(Icons.refresh, size: 20),
-                        tooltip: 'Refresh',
-                      ),
-                      TextButton.icon(
-                        onPressed: () {
-                          Navigator.pop(context);
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (context) => const FamilyMembersScreen(),
-                            ),
-                          );
-                        },
-                        icon: const Icon(Icons.add, size: 18),
-                        label: const Text('Add New'),
-                        style: TextButton.styleFrom(
-                          foregroundColor: AppColors.primaryBlue,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const Divider(height: 1),
-            // Family members list
-            Expanded(
-              child: isLoadingDependents
-                  ? const Center(
-                      child: CircularProgressIndicator(
-                        color: AppColors.primaryBlue,
-                      ),
-                    )
-                  : dependentsError != null
-                      ? Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.error_outline,
-                                size: 48,
-                                color: Colors.grey[400],
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                dependentsError!,
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.grey[600],
-                                ),
-                                textAlign: TextAlign.center,
-                              ),
-                              const SizedBox(height: 16),
-                              ElevatedButton(
-                                onPressed: _loadDependents,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: AppColors.primaryBlue,
-                                  foregroundColor: Colors.white,
-                                ),
-                                child: const Text('Retry'),
-                              ),
-                            ],
-                          ),
-                        )
-                      : _familyMembers.isEmpty
-                          ? Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.family_restroom,
-                                    size: 48,
-                                    color: Colors.grey[400],
-                                  ),
-                                  const SizedBox(height: 16),
-                                  const Text(
-                                    'No Family Members',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.grey,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'Add family members to select them',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      color: Colors.grey[600],
-                                    ),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ],
-                              ),
-                            )
-                          : ListView.builder(
-                              padding: const EdgeInsets.all(20),
-                              itemCount: _familyMembers.length,
-                              itemBuilder: (context, index) {
-                                final member = _familyMembers[index];
-                                final isSelected = selectedPatient == member['name'];
-                  
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: isSelected ? AppColors.primaryBlue : Colors.grey[200]!,
-                        width: isSelected ? 2 : 1,
-                      ),
-                    ),
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.all(16),
-                      leading: Container(
-                        width: 50,
-                        height: 50,
-                        decoration: BoxDecoration(
-                          color: AppColors.primaryBlue.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(25),
-                        ),
-                        child: Icon(
-                          member['gender'] == 'Male' ? Icons.male : Icons.female,
-                          color: AppColors.primaryBlue,
-                          size: 24,
-                        ),
-                      ),
-                      title: Row(
-                        children: [
-                          Text(
-                            member['name'],
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.black87,
-                            ),
-                          ),
-                          if (member['isPrimary']) ...[
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: AppColors.primaryBlue.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: const Text(
-                                'Primary',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppColors.primaryBlue,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                      subtitle: Text(
-                        '${member['relation']} • ${member['age']} years • ${member['gender']}',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey,
-                        ),
-                      ),
-                      trailing: Container(
-                        width: 20,
-                        height: 20,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: isSelected ? AppColors.primaryBlue : Colors.grey[400]!,
-                            width: 2,
-                          ),
-                        ),
-                        child: isSelected
-                            ? Container(
-                                margin: const EdgeInsets.all(4),
-                                decoration: const BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: AppColors.primaryBlue,
-                                ),
-                              )
-                            : null,
-                      ),
-                      onTap: () {
-                        setState(() {
-                          selectedPatient = member['name'];
-                        });
-                        Navigator.pop(context);
-                      },
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
+      builder: (context) => _PatientSelectionBottomSheet(
+        familyMembers: _familyMembers,
+        selectedPatient: selectedPatient,
+        isLoadingDependents: isLoadingDependents,
+        dependentsError: dependentsError,
+        onRefresh: _loadDependents,
+        onPatientSelected: (patientName) {
+          setState(() {
+            selectedPatient = patientName;
+          });
+        },
+        onAddNewMember: () {
+          Navigator.pop(context);
+          AddFamilyMemberBottomSheet.show(
+            context: context,
+            onMemberAdded: (memberName) async {
+              print('🔄 AddFamilyMemberBottomSheet callback called with name: $memberName');
+              if (memberName != null) {
+                // Reload dependents first
+                await _loadDependents();
+                // Auto-select the newly added family member
+                setState(() {
+                  selectedPatient = memberName;
+                });
+                print('🔄 Selected patient set to: $selectedPatient');
+              }
+            },
+          );
+        },
+        onNewMemberAdded: (memberName) async {
+          print('🔄 onNewMemberAdded called with name: $memberName');
+          if (memberName != null) {
+            // Reload dependents first
+            await _loadDependents();
+            print('🔄 Dependents reloaded. Count: ${_familyMembers.length}');
+            print('🔄 Dependents: $_familyMembers');
+            // Auto-select the newly added family member
+            setState(() {
+              selectedPatient = memberName;
+            });
+            print('🔄 Selected patient set to: $selectedPatient');
+          }
+        },
       ),
     );
   }
@@ -1975,12 +1939,49 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
 
   void _showAddressSelectionBottomSheet() {
+    print('📍 Single lab checkout - _showAddressSelectionBottomSheet called');
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _AddressSelectionBottomSheet(
+        selectedAddress: selectedAddress,
+        onAddressSelected: (addressId) {
+          setState(() {
+            selectedAddress = addressId;
+          });
+          // Call API to get home collection fees
+          print('📍 Single lab checkout - About to call _getHomeCollectionFees');
+          _getHomeCollectionFees(addressId?.toString());
+        },
+        onNewAddressAdded: (addressId) async {
+          print('🔄 onNewAddressAdded called with addressId: $addressId');
+          // First reload the addresses to get the updated list
+          await _loadAddresses();
+          print('🔄 Addresses reloaded. Count: ${_addresses.length}');
+          print('🔄 Addresses: $_addresses');
+          // Then set the selected address
+          setState(() {
+            selectedAddress = addressId;
+          });
+          print('🔄 Selected address set to: $selectedAddress');
+          print('🔄 Addresses after selection: ${_addresses.map((a) => '${a['id']}').toList()}');
+          // Call API to get home collection fees for the new address
+          _getHomeCollectionFees(addressId?.toString());
+        },
+      ),
+    );
+  }
+
+  void _showAddressSelectionBottomSheetOld() {
+    print('📍 Single lab checkout - _showAddressSelectionBottomSheet called');
+    print('📍 Single lab checkout - _addresses count: ${_addresses.length}');
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.7,
+        height: (MediaQuery.of(context).size.height * 0.7).clamp(300.0, MediaQuery.of(context).size.height),
         decoration: const BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.only(
@@ -2024,10 +2025,21 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       TextButton.icon(
                         onPressed: () {
                           Navigator.pop(context);
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (context) => const AddressesScreen(),
-                            ),
+                          AddAddressBottomSheet.show(
+                            context: context,
+                            onAddressAdded: (newAddressId) async {
+                              print('🔄 Old bottom sheet: AddAddressBottomSheet callback called with ID: $newAddressId');
+                              if (newAddressId != null) {
+                                // Reload addresses first
+                                await _loadAddresses();
+                                // Use the actual address ID from the API response
+                                setState(() {
+                                  selectedAddress = newAddressId;
+                                });
+                                // Call API to get home collection fees for the new address
+                                _getHomeCollectionFees(newAddressId);
+                              }
+                            },
                           );
                         },
                         icon: const Icon(Icons.add, size: 18),
@@ -2154,7 +2166,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                               color: Colors.black87,
                             ),
                           ),
-                          if (address['isDefault']) ...[
+                          if (address['is_primary']) ...[
                             const SizedBox(width: 8),
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -2216,10 +2228,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                             : null,
                       ),
                       onTap: () {
+                        print('📍 Single lab checkout - Address tapped: ${address['id']}');
                         setState(() {
                           selectedAddress = address['id'];
                         });
                         Navigator.pop(context);
+                        // Call API to get home collection fees
+                        print('📍 Single lab checkout - About to call _getHomeCollectionFees');
+                        _getHomeCollectionFees(address['id']?.toString());
                       },
                     ),
                   );
@@ -2237,7 +2253,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     _showTimeslotSelectionBottomSheet();
   }
 
-  String _formatDate(DateTime date) {
+  String _formatDate(DateTime? date) {
+    if (date == null) return 'Select Date';
+    
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final tomorrow = today.add(const Duration(days: 1));
@@ -2527,6 +2545,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   Future<void> _onItemAddedToCart() async {
     await _refreshCartData();
     setState(() {}); // Refresh the UI
+    
+    // Notify parent about cart changes
+    if (widget.onCartChanged != null) {
+      print('🔄 Cart changed in checkout - notifying parent');
+      widget.onCartChanged!();
+    }
   }
 
   // Refresh cart data after changes
@@ -2708,6 +2732,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
+  String _formatTimeRange(String startTime, String endTime) {
+    if (startTime.isEmpty || endTime.isEmpty) return '';
+    
+    String formattedStart = _formatTimeTo12Hour(startTime);
+    String formattedEnd = _formatTimeTo12Hour(endTime);
+    
+    return '$formattedStart - $formattedEnd';
+  }
+
   // Generate time slots based on session parameters
   List<Map<String, dynamic>> _generateTimeSlots({
     required String sessionStart, // '09:00:00'
@@ -2826,7 +2859,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             selectedSession = sessionName;
             selectedSlot = '${slot['start_time']} - ${slot['end_time']}';
             selectedDoctor = slot['doctor']?['name'] ?? '';
-            selectedTime = _formatTimeTo12Hour(slot['start_time'] ?? '');
+            selectedTime = _formatTimeRange(slot['start_time'] ?? '', slot['end_time'] ?? '');
           });
           Navigator.pop(context);
         } : null,
@@ -2851,9 +2884,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           ),
           child: Center(
             child: Text(
-              _formatTimeTo12Hour(slot['start_time'] ?? ''),
+              _formatTimeRange(slot['start_time'] ?? '', slot['end_time'] ?? ''),
               style: TextStyle(
-                fontSize: 11,
+                fontSize: 9,
                 fontWeight: FontWeight.w600,
                 color: isSelected 
                     ? Colors.white 
@@ -3437,7 +3470,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                   ),
                                 ),
                                 Text(
-                                  selectedPatient,
+                                  () {
+                                    print('🔍 Displaying selectedPatient: $selectedPatient');
+                                    print('🔍 Available family members: ${_familyMembers.map((m) => '${m['name']}').toList()}');
+                                    return selectedPatient;
+                                  }(),
                                   style: const TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w600,
@@ -3534,7 +3571,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                   ),
                                   Text(
                                     selectedAddress != null
-                                        ? _addresses.firstWhere((addr) => addr['id'] == selectedAddress)['address']
+                                        ? () {
+                                            print('🔍 Looking for address with ID: $selectedAddress');
+                                            print('🔍 Available addresses: ${_addresses.map((a) => '${a['id']} (${a['id'].runtimeType})').toList()}');
+                                            final foundAddress = _addresses.firstWhere(
+                                              (addr) => addr['id'].toString() == selectedAddress.toString(), 
+                                              orElse: () => {}
+                                            );
+                                            print('🔍 Found address: $foundAddress');
+                                            return foundAddress['address'] ?? 'Select address';
+                                          }()
                                         : 'Select address',
                                     style: TextStyle(
                                       fontSize: 16,
@@ -3545,7 +3591,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                   if (selectedAddress != null) ...[
                                     const SizedBox(height: 2),
                                     Text(
-                                      '${_addresses.firstWhere((addr) => addr['id'] == selectedAddress)['city']}, ${_addresses.firstWhere((addr) => addr['id'] == selectedAddress)['state']}',
+                                      () {
+                                        final foundAddress = _addresses.firstWhere(
+                                          (addr) => addr['id'].toString() == selectedAddress.toString(), 
+                                          orElse: () => {}
+                                        );
+                                        return '${foundAddress['city'] ?? 'Unknown'}, ${foundAddress['state'] ?? 'Unknown'}';
+                                      }(),
                                       style: const TextStyle(
                                         fontSize: 14,
                                         color: Colors.grey,
@@ -3629,17 +3681,17 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   ),
                   const SizedBox(height: 12),
                   InkWell(
-                    onTap: _showTimePicker,
+                    onTap: selectedDate != null ? _showTimePicker : null,
                     child: Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: Colors.grey[50],
+                        color: selectedDate != null ? Colors.grey[50] : Colors.grey[100],
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.grey[300]!),
+                        border: Border.all(color: selectedDate != null ? Colors.grey[300]! : Colors.grey[200]!),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.access_time, color: Colors.grey),
+                          Icon(Icons.access_time, color: selectedDate != null ? Colors.grey : Colors.grey[400]),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Column(
@@ -3653,17 +3705,17 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                   ),
                                 ),
                                 Text(
-                                  selectedTime,
-                                  style: const TextStyle(
+                                  selectedTime ?? (selectedDate == null ? 'Select Date First' : 'Select Time'),
+                                  style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w600,
-                                    color: Colors.black87,
+                                    color: selectedTime != null ? Colors.black87 : Colors.grey[500],
                                   ),
                                 ),
                               ],
                             ),
                           ),
-                          const Icon(Icons.arrow_forward_ios, color: Colors.grey, size: 16),
+                          Icon(Icons.arrow_forward_ios, color: selectedDate != null ? Colors.grey : Colors.grey[400], size: 16),
                         ],
                       ),
                     ),
@@ -4153,6 +4205,32 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               // Price Summary
               Column(
                 children: [
+                  // Home Collection Fee (only show when address is selected)
+                  if (isHomeCollection && selectedAddress != null) ...[
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Home Collection Fee:',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          '₹${totalHomeCollectionFee.toStringAsFixed(0)}',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.orange,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                  ],
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -4192,39 +4270,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       ),
                     ],
                   ),
-                  // Show discount message only when discount should be applied and discount is available
-                  if (shouldApplyDiscount && totalOriginalPrice > totalDiscountedPrice) ...[
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.green.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.green.withOpacity(0.3)),
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Icon(
-                            Icons.check_circle,
-                            size: 16,
-                            color: Colors.green,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'Discount applied - Best prices guaranteed!',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: Colors.green,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
                   if (appliedCoupon != null) ...[
                     const SizedBox(height: 8),
                     Row(
@@ -4244,30 +4289,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                           style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
-                            color: Colors.green,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Expanded(
-                          child: Text(
-                            'After Coupon:',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.black87,
-                            ),
-                          ),
-                        ),
-                        Text(
-                          '₹${actualPayableAmount.toStringAsFixed(0)}',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
                             color: Colors.green,
                           ),
                         ),
@@ -4414,7 +4435,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ElevatedButton(
                 onPressed: (selectedTests.isNotEmpty || selectedPackages.isNotEmpty) && 
                          (!isHomeCollection || (isHomeCollection && selectedAddress != null)) &&
-                         (useWalletBalance ? amountAfterWallet <= 0 : true) && !isBooking ? () {
+                         !isBooking ? () {
                   print('🔄 Book Now button pressed');
                   _createBooking();
                 } : null,
@@ -4820,8 +4841,9 @@ class _AddMoreItemsBottomSheetState extends State<_AddMoreItemsBottomSheet> {
       print('🛒 Discount value: $discountedValue, discount type: $discountType');
       
       // For organization-specific tests, use test_id for lab_test_id key
+      // For packages, set labTestId to empty string and use packageId
       final labTestId = isPackage ? '' : (item['test_id']?.toString() ?? item['id']?.toString() ?? '');
-      final packageId = isPackage ? (item['package_id']?.toString() ?? '') : null;
+      final packageId = isPackage ? (item['package_id']?.toString() ?? item['id']?.toString() ?? '') : null;
 
       final result = await _apiService.addToCart(
         price: originalPrice,
@@ -4836,13 +4858,7 @@ class _AddMoreItemsBottomSheetState extends State<_AddMoreItemsBottomSheet> {
       );
 
       if (result['success']) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('$itemName added to cart'),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 2),
-          ),
-        );
+        // Item added to cart - no toast message needed
         
         // Update local state to add the item to cart
         final itemId = isPackage 
@@ -4913,13 +4929,7 @@ class _AddMoreItemsBottomSheetState extends State<_AddMoreItemsBottomSheet> {
         
         await widget.onRemoveFromCart!(finalItemId, isPackage);
         
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('$itemName removed from cart'),
-            backgroundColor: Colors.orange,
-            duration: const Duration(seconds: 2),
-          ),
-        );
+        // Item removed from cart - no toast message needed
         
         Navigator.of(context).pop();
       } else {
@@ -4927,13 +4937,7 @@ class _AddMoreItemsBottomSheetState extends State<_AddMoreItemsBottomSheet> {
         final result = await _apiService.removeFromCart(itemId);
 
         if (result['success']) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('$itemName removed from cart'),
-              backgroundColor: Colors.orange,
-              duration: const Duration(seconds: 2),
-            ),
-          );
+          // Item removed from cart - no toast message needed
           
           // Update local state to remove the item from cart
           setState(() {
@@ -4968,7 +4972,7 @@ class _AddMoreItemsBottomSheetState extends State<_AddMoreItemsBottomSheet> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: MediaQuery.of(context).size.height * 0.85,
+       height: (MediaQuery.of(context).size.height * 0.85).clamp(300.0, MediaQuery.of(context).size.height),
       decoration: const BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.only(
@@ -5473,6 +5477,755 @@ class _AddMoreItemsBottomSheetState extends State<_AddMoreItemsBottomSheet> {
           ),
         );
       },
+    );
+  }
+}
+
+class _PatientSelectionBottomSheet extends StatefulWidget {
+  final List<Map<String, dynamic>> familyMembers;
+  final String selectedPatient;
+  final bool isLoadingDependents;
+  final String? dependentsError;
+  final VoidCallback onRefresh;
+  final Function(String) onPatientSelected;
+  final VoidCallback onAddNewMember;
+  final Function(String?) onNewMemberAdded;
+
+  const _PatientSelectionBottomSheet({
+    required this.familyMembers,
+    required this.selectedPatient,
+    required this.isLoadingDependents,
+    required this.dependentsError,
+    required this.onRefresh,
+    required this.onPatientSelected,
+    required this.onAddNewMember,
+    required this.onNewMemberAdded,
+  });
+
+  @override
+  State<_PatientSelectionBottomSheet> createState() => _PatientSelectionBottomSheetState();
+}
+
+class _PatientSelectionBottomSheetState extends State<_PatientSelectionBottomSheet> {
+  List<Map<String, dynamic>> _localFamilyMembers = [];
+  bool _isLoading = true;
+  String? _error;
+  final ApiService _apiService = ApiService();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDependents();
+  }
+
+  Future<void> _loadDependents() async {
+    print('🔄 _loadDependents method called in patient selection bottom sheet');
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      print('🔄 About to call getDependents API...');
+      final result = await _apiService.getDependents(context);
+      print('🔄 Bottom Sheet API Result: $result');
+      
+      if (result['success']) {
+        final List<dynamic> data = result['data'] ?? [];
+        print('🔄 Bottom Sheet Dependents data: $data');
+        
+        // Convert API data to the format expected by the UI
+        final List<Map<String, dynamic>> convertedDependents = [];
+        
+        // Add "Myself" as the first option
+        convertedDependents.add({
+          'name': 'Myself',
+          'relation': 'Account Holder',
+          'age': 28,
+          'gender': 'Male',
+          'isPrimary': true,
+        });
+        
+        // Convert API dependents to UI format
+        for (final dependent in data) {
+          final age = _calculateAge(dependent['date_of_birth'] ?? '');
+          final convertedDependent = {
+            'name': '${dependent['first_name'] ?? ''} ${dependent['last_name'] ?? ''}'.trim(),
+            'relation': dependent['relationship']?['name'] ?? 'Other',
+            'age': age,
+            'gender': dependent['gender'] ?? 'Other',
+            'isPrimary': false,
+            'id': dependent['id'],
+            'contact_number': dependent['contact_number'],
+            'email': dependent['email'],
+          };
+          convertedDependents.add(convertedDependent);
+        }
+        
+        setState(() {
+          _localFamilyMembers = convertedDependents;
+          _isLoading = false;
+        });
+        print('🔄 Bottom Sheet Dependents loaded successfully. Count: ${_localFamilyMembers.length}');
+      } else {
+        print('❌ Bottom Sheet Failed to load dependents: ${result['message']}');
+        // If API fails, still show "Myself" option
+        final List<Map<String, dynamic>> fallbackDependents = [
+          {
+            'name': 'Myself',
+            'relation': 'Account Holder',
+            'age': 28,
+            'gender': 'Male',
+            'isPrimary': true,
+          }
+        ];
+        setState(() {
+          _localFamilyMembers = fallbackDependents;
+          _error = result['message'] ?? 'Failed to load dependents';
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('❌ Bottom Sheet Error loading dependents: $e');
+      // If there's an error, still show "Myself" option
+      final List<Map<String, dynamic>> fallbackDependents = [
+        {
+          'name': 'Myself',
+          'relation': 'Account Holder',
+          'age': 28,
+          'gender': 'Male',
+          'isPrimary': true,
+        }
+      ];
+      setState(() {
+        _localFamilyMembers = fallbackDependents;
+        _error = 'Network error occurred';
+        _isLoading = false;
+      });
+    }
+  }
+
+  int _calculateAge(String dateOfBirth) {
+    if (dateOfBirth.isEmpty) return 0;
+    try {
+      final birthDate = DateTime.parse(dateOfBirth);
+      final now = DateTime.now();
+      int age = now.year - birthDate.year;
+      if (now.month < birthDate.month || (now.month == birthDate.month && now.day < birthDate.day)) {
+        age--;
+      }
+      return age;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+       height: (MediaQuery.of(context).size.height * 0.6).clamp(300.0, MediaQuery.of(context).size.height),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(20),
+          topRight: Radius.circular(20),
+        ),
+      ),
+      child: Column(
+        children: [
+          // Handle bar
+          Container(
+            margin: const EdgeInsets.only(top: 12),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          // Header
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Select Patient',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black,
+                  ),
+                ),
+                Row(
+                  children: [
+                    IconButton(
+                      onPressed: () {
+                        print('🔄 Refresh button pressed in patient selection bottom sheet');
+                        _loadDependents();
+                      },
+                      icon: const Icon(Icons.refresh, size: 20),
+                      tooltip: 'Refresh',
+                    ),
+                    TextButton.icon(
+                      onPressed: () {
+                        AddFamilyMemberBottomSheet.show(
+                          context: context,
+                          onMemberAdded: (memberName) async {
+                            print('🔄 Patient selection bottom sheet: AddFamilyMemberBottomSheet callback called with name: $memberName');
+                            if (memberName != null) {
+                              // Reload dependents first
+                              await _loadDependents();
+                              print('🔄 Local family members reloaded. Count: ${_localFamilyMembers.length}');
+                              print('🔄 Local family members: $_localFamilyMembers');
+                              // Use the actual family member name from the form
+                              print('🔄 Using family member name from form: $memberName');
+                              widget.onNewMemberAdded(memberName);
+                              // Close the patient selection bottom sheet after selection
+                              Navigator.pop(context);
+                            }
+                          },
+                        );
+                      },
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('Add New'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.primaryBlue,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          // Family members list
+          Expanded(
+            child: _isLoading
+                ? const Center(
+                    child: CircularProgressIndicator(
+                      color: AppColors.primaryBlue,
+                    ),
+                  )
+                : _error != null
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.error_outline,
+                              size: 48,
+                              color: Colors.grey[400],
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              _error!,
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey[600],
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 16),
+                            ElevatedButton(
+                              onPressed: () {
+                                print('🔄 Retry button pressed in patient selection bottom sheet');
+                                _loadDependents();
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.primaryBlue,
+                                foregroundColor: Colors.white,
+                              ),
+                              child: const Text('Retry'),
+                            ),
+                          ],
+                        ),
+                      )
+                    : _localFamilyMembers.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.family_restroom,
+                                  size: 48,
+                                  color: Colors.grey[400],
+                                ),
+                                const SizedBox(height: 16),
+                                const Text(
+                                  'No Family Members',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Add family members to select them',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey[600],
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ],
+                            ),
+                          )
+                        : ListView.builder(
+                            padding: const EdgeInsets.all(20),
+                            itemCount: _localFamilyMembers.length,
+                            itemBuilder: (context, index) {
+                              final member = _localFamilyMembers[index];
+                              final isSelected = widget.selectedPatient == (member['name'] ?? '');
+                              print('🔍 Family member ${member['name']} isSelected: $isSelected (selectedPatient: ${widget.selectedPatient})');
+                
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 12),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: isSelected ? AppColors.primaryBlue : Colors.grey[200]!,
+                                    width: isSelected ? 2 : 1,
+                                  ),
+                                ),
+                                child: ListTile(
+                                  contentPadding: const EdgeInsets.all(16),
+                                  leading: Container(
+                                    width: 50,
+                                    height: 50,
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primaryBlue.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(25),
+                                    ),
+                                    child: Icon(
+                                      (member['gender'] ?? '') == 'Male' ? Icons.male : Icons.female,
+                                      color: AppColors.primaryBlue,
+                                      size: 24,
+                                    ),
+                                  ),
+                                  title: Row(
+                                    children: [
+                                      Text(
+                                        member['name'] ?? 'Unknown',
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.black87,
+                                        ),
+                                      ),
+                                      if (member['isPrimary']) ...[
+                                        const SizedBox(width: 8),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.primaryBlue.withOpacity(0.1),
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                          child: const Text(
+                                            'Primary',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w600,
+                                              color: AppColors.primaryBlue,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                  subtitle: Text(
+                                    '${member['relation'] ?? 'Unknown'} • ${member['age'] ?? 0} years • ${member['gender'] ?? 'Unknown'}',
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                  trailing: Container(
+                                    width: 20,
+                                    height: 20,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: isSelected ? AppColors.primaryBlue : Colors.grey[400]!,
+                                        width: 2,
+                                      ),
+                                    ),
+                                    child: isSelected
+                                        ? Container(
+                                            margin: const EdgeInsets.all(4),
+                                            decoration: const BoxDecoration(
+                                              shape: BoxShape.circle,
+                                              color: AppColors.primaryBlue,
+                                            ),
+                                          )
+                                        : null,
+                                  ),
+                                  onTap: () {
+                                    widget.onPatientSelected(member['name'] ?? 'Unknown');
+                                    Navigator.pop(context);
+                                  },
+                                ),
+                              );
+                            },
+                          ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AddressSelectionBottomSheet extends StatefulWidget {
+  final String? selectedAddress;
+  final Function(String?) onAddressSelected;
+  final Function(String?) onNewAddressAdded;
+
+  const _AddressSelectionBottomSheet({
+    required this.selectedAddress,
+    required this.onAddressSelected,
+    required this.onNewAddressAdded,
+  });
+
+  @override
+  State<_AddressSelectionBottomSheet> createState() => _AddressSelectionBottomSheetState();
+}
+
+class _AddressSelectionBottomSheetState extends State<_AddressSelectionBottomSheet> {
+  List<Map<String, dynamic>> _localAddresses = [];
+  bool _isLoading = true;
+  String? _error;
+  final ApiService _apiService = ApiService();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAddresses();
+  }
+
+  Future<void> _loadAddresses() async {
+    print('🔄 _loadAddresses method called in address selection bottom sheet');
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      print('🔄 About to call getUserAddresses API...');
+      final result = await _apiService.getUserAddresses(context);
+      print('🔄 Bottom Sheet Address API Result: $result');
+      
+      if (result['success']) {
+        final List<dynamic> data = result['data'] ?? [];
+        print('🔄 Bottom Sheet Addresses data: $data');
+        
+        // Convert API data to the format expected by the UI (same as main method)
+        final List<Map<String, dynamic>> convertedAddresses = [];
+        
+        for (final address in data) {
+          convertedAddresses.add({
+            'id': address['id'],
+            'type': 'Home', // You might want to add type field to your API
+            'address': '${address['address_line1'] ?? ''}${address['address_line2'] != null && address['address_line2'].isNotEmpty ? ', ${address['address_line2']}' : ''}',
+            'city': address['city'] ?? '',
+            'state': address['state'] ?? '',
+            'pincode': address['postal_code'] ?? '',
+            'is_primary': address['is_primary'] == true,
+            'contact_number': address['contact_number'],
+            'country': address['country'],
+          });
+        }
+        
+        setState(() {
+          _localAddresses = convertedAddresses;
+          _isLoading = false;
+        });
+        print('🔄 Bottom Sheet Addresses loaded successfully. Count: ${_localAddresses.length}');
+      } else {
+        print('❌ Bottom Sheet Failed to load addresses: ${result['message']}');
+        setState(() {
+          _error = result['message'] ?? 'Failed to load addresses';
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('❌ Bottom Sheet Error loading addresses: $e');
+      setState(() {
+        _error = 'Network error occurred';
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.7,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(20),
+          topRight: Radius.circular(20),
+        ),
+      ),
+      child: Column(
+        children: [
+          // Handle bar
+          Container(
+            margin: const EdgeInsets.only(top: 12),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          // Header
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Select Address',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black,
+                  ),
+                ),
+                Row(
+                  children: [
+                    IconButton(
+                      onPressed: () {
+                        print('🔄 Refresh button pressed in address selection bottom sheet');
+                        _loadAddresses();
+                      },
+                      icon: const Icon(Icons.refresh, size: 20),
+                      tooltip: 'Refresh',
+                    ),
+                    TextButton.icon(
+                      onPressed: () {
+                        AddAddressBottomSheet.show(
+                          context: context,
+                          onAddressAdded: (newAddressId) async {
+                            print('🔄 AddAddressBottomSheet onAddressAdded callback called with ID: $newAddressId');
+                            if (newAddressId != null) {
+                              // Reload addresses first
+                              await _loadAddresses();
+                              print('🔄 Local addresses reloaded. Count: ${_localAddresses.length}');
+                              print('🔄 Local addresses: $_localAddresses');
+                              // Use the actual address ID from the API response
+                              print('🔄 Using address ID from API: $newAddressId');
+                              widget.onNewAddressAdded(newAddressId);
+                              // Close the address selection bottom sheet after selection
+                              Navigator.pop(context);
+                            }
+                          },
+                        );
+                      },
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('Add New'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.primaryBlue,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          // Addresses list
+          Expanded(
+            child: _isLoading
+                ? const Center(
+                    child: CircularProgressIndicator(
+                      color: AppColors.primaryBlue,
+                    ),
+                  )
+                : _error != null
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.error_outline,
+                              size: 48,
+                              color: Colors.grey[400],
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              _error!,
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey[600],
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 16),
+                            ElevatedButton(
+                              onPressed: () {
+                                print('🔄 Retry button pressed in address selection bottom sheet');
+                                _loadAddresses();
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.primaryBlue,
+                                foregroundColor: Colors.white,
+                              ),
+                              child: const Text('Retry'),
+                            ),
+                          ],
+                        ),
+                      )
+                    : _localAddresses.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.location_on_outlined,
+                                  size: 48,
+                                  color: Colors.grey[400],
+                                ),
+                                const SizedBox(height: 16),
+                                const Text(
+                                  'No Addresses Found',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Add your delivery addresses to get started',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey[600],
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ],
+                            ),
+                          )
+                        : ListView.builder(
+                            padding: const EdgeInsets.all(20),
+                            itemCount: _localAddresses.length,
+                            itemBuilder: (context, index) {
+                              final address = _localAddresses[index];
+                              final isSelected = widget.selectedAddress == (address['id']?.toString() ?? '');
+                              print('🔍 Address ${address['id']} isSelected: $isSelected (selectedAddress: ${widget.selectedAddress})');
+                
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 12),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: isSelected ? AppColors.primaryBlue : Colors.grey[200]!,
+                                    width: isSelected ? 2 : 1,
+                                  ),
+                                ),
+                                child: ListTile(
+                                  contentPadding: const EdgeInsets.all(16),
+                                  leading: Container(
+                                    width: 50,
+                                    height: 50,
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primaryBlue.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Icon(
+                                      (address['type'] ?? '') == 'Home' ? Icons.home : Icons.business,
+                                      color: AppColors.primaryBlue,
+                                      size: 24,
+                                    ),
+                                  ),
+                                  title: Row(
+                                    children: [
+                                      Text(
+                                        address['type'] ?? 'Address',
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.black87,
+                                        ),
+                                      ),
+                                      if (address['is_primary']) ...[
+                                        const SizedBox(width: 8),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: Colors.green.withOpacity(0.1),
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                          child: const Text(
+                                            'Default',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w600,
+                                              color: Colors.green,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                  subtitle: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        address['address'] ?? 'No address',
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          color: Colors.black87,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        '${address['city'] ?? 'Unknown'}, ${address['state'] ?? 'Unknown'} - ${address['pincode'] ?? 'Unknown'}',
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          color: Colors.grey,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  trailing: Container(
+                                    width: 20,
+                                    height: 20,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: isSelected ? AppColors.primaryBlue : Colors.grey[400]!,
+                                        width: 2,
+                                      ),
+                                    ),
+                                    child: isSelected
+                                        ? Container(
+                                            margin: const EdgeInsets.all(4),
+                                            decoration: const BoxDecoration(
+                                              shape: BoxShape.circle,
+                                              color: AppColors.primaryBlue,
+                                            ),
+                                          )
+                                        : null,
+                                  ),
+                                  onTap: () {
+                                    print('📍 Bottom Sheet - Address tapped: ${address['id']}');
+                                    widget.onAddressSelected(address['id']?.toString());
+                                    Navigator.pop(context);
+                                  },
+                                ),
+                              );
+                            },
+                          ),
+          ),
+        ],
+      ),
     );
   }
 }

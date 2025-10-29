@@ -254,7 +254,7 @@ class _PackagesListTabState extends State<PackagesListTab> {
     }
   }
 
-  Future<void> _addToCartApi(String packageName, String packageId, double originalPrice, {String? organizationId, String? organizationName, double? discountedPrice, double? discountedValue, String? discountType}) async {
+  Future<bool> _addToCartApi(String packageName, String packageId, double originalPrice, {String? organizationId, String? organizationName, double? discountedPrice, double? discountedValue, String? discountType}) async {
     // Set loading state for this specific package using package ID
     setState(() {
       loadingStates[packageId] = true;
@@ -265,23 +265,29 @@ class _PackagesListTabState extends State<PackagesListTab> {
       final result = await apiService.addToCart(
         price: originalPrice,
         testName: packageName,
-        labTestId: packageId,
-        packageId: packageId,
-        organizationId: organizationId,
-        organizationName: organizationName,
+        labTestId: '', // Empty string for packages
+        packageId: packageId, // Use packageId parameter for packages
         discountedPrice: discountedPrice,
         discountedValue: discountedValue,
         discountType: discountType,
+        organizationId: organizationId,
+        organizationName: organizationName,
       );
       
       if (result['success']) {
-        // Success - no toast needed, item added via API
         print('✅ Package added to cart successfully via API');
-        print('✅ Lab ID: $organizationId');
-        print('✅ Lab Name: $organizationName');
-        print('✅ Package: $packageName (ID: $packageId)');
+        // Show success message
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result['message'] ?? 'Package added to cart successfully'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+        return true; // Return success
       } else {
-        // Show error message only
+        // Show error message
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -290,6 +296,7 @@ class _PackagesListTabState extends State<PackagesListTab> {
             ),
           );
         }
+        throw Exception(result['message'] ?? 'Failed to add item to cart'); // Throw exception for failure
       }
     } catch (e) {
       if (mounted) {
@@ -300,6 +307,7 @@ class _PackagesListTabState extends State<PackagesListTab> {
           ),
         );
       }
+      throw e; // Re-throw the exception
     } finally {
       // Clear loading state using package ID
       if (mounted) {

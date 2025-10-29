@@ -200,7 +200,9 @@ class _AddMoneyBottomSheetState extends State<AddMoneyBottomSheet> {
       ),
       child: Padding(
         padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom,
+          bottom: MediaQuery.of(context).viewInsets.bottom > 0 
+              ? MediaQuery.of(context).viewInsets.bottom - 50 
+              : 0,
           left: 20,
           right: 20,
           top: 20,

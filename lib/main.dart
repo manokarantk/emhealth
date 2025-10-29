@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
@@ -9,11 +10,21 @@ import 'screens/otp_verification_screen.dart';
 import 'screens/profile_completion_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/landing_page.dart';
+import 'screens/notifications_screen.dart';
+import 'screens/profile_edit_screen.dart';
 import 'theme/app_theme.dart';
 import 'widgets/notification_test_widget.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Suppress verbose system logs
+  SystemChannels.platform.setMethodCallHandler((call) async {
+    if (call.method == 'SystemChrome.setSystemUIOverlayStyle') {
+      // Suppress verbose system UI logs
+      return;
+    }
+  });
   
   // Initialize Firebase
   await Firebase.initializeApp(
@@ -47,6 +58,8 @@ class MyApp extends StatelessWidget {
         '/profile-completion': (context) => const ProfileCompletionScreen(),
         '/home': (context) => const HomeScreen(),
         '/landing': (context) => const LandingPage(),
+        '/notifications': (context) => const NotificationsScreen(),
+        '/profile-edit': (context) => const ProfileEditScreen(),
         '/notification-test': (context) => const NotificationTestWidget(),
         // Add more routes as needed
       },

@@ -116,4 +116,85 @@ class FirebaseStorageService {
     // For now, we'll default to gallery
     return await pickImageFromGallery();
   }
+
+  /// Upload medical record file to Firebase Storage
+  static Future<String> uploadMedicalRecord(String filePath, String storagePath) async {
+    try {
+      print('📤 Starting medical record upload to Firebase Storage...');
+      print('📁 File path: $filePath');
+      print('📁 Storage path: $storagePath');
+      
+      final file = File(filePath);
+      if (!await file.exists()) {
+        throw Exception('File does not exist: $filePath');
+      }
+      
+      // Create a reference to the file location
+      final storageRef = _storage.ref().child(storagePath);
+      
+      // Upload the file
+      print('📤 Uploading medical record file...');
+      final uploadTask = storageRef.putFile(file);
+      
+      // Wait for the upload to complete
+      final snapshot = await uploadTask;
+      print('✅ Medical record upload completed');
+      
+      // Get the download URL
+      final downloadUrl = await snapshot.ref.getDownloadURL();
+      print('🔗 Medical record download URL: $downloadUrl');
+      
+      return downloadUrl;
+    } catch (e) {
+      print('❌ Error uploading medical record: $e');
+      throw Exception('Failed to upload medical record: $e');
+    }
+  }
+
+  /// Upload enquiry images to Firebase Storage
+  static Future<List<String>> uploadEnquiryImages(List<String> imagePaths) async {
+    try {
+      print('📤 Starting enquiry images upload to Firebase Storage...');
+      print('📁 Number of images to upload: ${imagePaths.length}');
+      
+      final List<String> downloadUrls = [];
+      
+      for (int i = 0; i < imagePaths.length; i++) {
+        final imagePath = imagePaths[i];
+        print('📤 Uploading image ${i + 1}/${imagePaths.length}: $imagePath');
+        
+        final file = File(imagePath);
+        if (!await file.exists()) {
+          print('⚠️ File does not exist, skipping: $imagePath');
+          continue;
+        }
+        
+        // Create a unique filename for enquiry images
+        final fileName = 'enquiry_images/${DateTime.now().millisecondsSinceEpoch}_${i}_${path.basename(imagePath)}';
+        print('📁 Storage path: $fileName');
+        
+        // Create a reference to the file location
+        final storageRef = _storage.ref().child(fileName);
+        
+        // Upload the file
+        final uploadTask = storageRef.putFile(file);
+        
+        // Wait for the upload to complete
+        final snapshot = await uploadTask;
+        print('✅ Image ${i + 1} upload completed');
+        
+        // Get the download URL
+        final downloadUrl = await snapshot.ref.getDownloadURL();
+        print('🔗 Image ${i + 1} download URL: $downloadUrl');
+        
+        downloadUrls.add(downloadUrl);
+      }
+      
+      print('✅ All enquiry images uploaded successfully. Total URLs: ${downloadUrls.length}');
+      return downloadUrls;
+    } catch (e) {
+      print('❌ Error uploading enquiry images: $e');
+      throw Exception('Failed to upload enquiry images: $e');
+    }
+  }
 }

@@ -19,6 +19,7 @@
         android:label="emhealth_app"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
+        android:debuggable="false"
         tools:replace="android:label">
         <activity
             android:name=".MainActivity"

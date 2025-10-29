@@ -94,6 +94,37 @@ class _PackageCardState extends State<PackageCard> {
     return number != null && number > 0;
   }
 
+  // Helper method to get package image based on package type
+  ImageProvider _getPackageImage() {
+    final title = widget.title.toLowerCase();
+    
+    // Use reliable, working image URLs from different sources
+    if (title.contains('diabetes') || title.contains('glucose') || title.contains('sugar')) {
+      return const NetworkImage('https://picsum.photos/400/300?random=1');
+    } else if (title.contains('fever') || title.contains('malaria') || title.contains('dengue') || title.contains('cancer')) {
+      return const NetworkImage('https://picsum.photos/400/300?random=10');
+    } else if (title.contains('full body') || title.contains('complete') || title.contains('comprehensive')) {
+      return const NetworkImage('https://picsum.photos/400/300?random=');
+    } else if (title.contains('thyroid') || title.contains('hormone')) {
+      return const NetworkImage('https://picsum.photos/400/300?random=4');
+    } else if (title.contains('heart') || title.contains('cardiac') || title.contains('lipid')) {
+      return const NetworkImage('https://picsum.photos/400/300?random=5');
+    } else if (title.contains('kidney') || title.contains('renal') || title.contains('creatinine')) {
+      return const NetworkImage('https://picsum.photos/400/300?random=6');
+    } else if (title.contains('liver') || title.contains('hepatic')) {
+      return const NetworkImage('https://picsum.photos/400/300?random=7');
+    } else if (title.contains('vitamin') || title.contains('nutrition')) {
+      return const NetworkImage('https://picsum.photos/400/300?random=8');
+    } else if (title.contains('women') || title.contains('pregnancy') || title.contains('prenatal')) {
+      return const NetworkImage('https://picsum.photos/400/300?random=9');
+    } else if (title.contains('men') || title.contains('male')) {
+      return const NetworkImage('https://picsum.photos/400/300?random=10');
+    } else {
+      // Default medical image for any package that doesn't match above conditions
+      return const NetworkImage('https://picsum.photos/400/300?random=11');
+    }
+  }
+
   void _showTestNamesSheet(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -229,224 +260,315 @@ class _PackageCardState extends State<PackageCard> {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    return Container(
+      width: widget.width ?? 340,
+      height: 280, // Fixed height for full card
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      elevation: 0,
-      child: Container(
-        width: widget.width ?? 340,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Stack(
           children: [
-            // Title and Add button
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Text(
-                    widget.title,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 19,
-                      color: Colors.black,
-                    ),
-                  ),
+            // Full height background image
+            Container(
+              width: double.infinity,
+              height: double.infinity,
+              decoration: BoxDecoration(
+                image: DecorationImage(
+                  image: _getPackageImage(),
+                  fit: BoxFit.cover,
                 ),
-                OutlinedButton(
-                  onPressed: _isLoading ? null : () async {
-                    setState(() {
-                      _isLoading = true;
-                    });
-                    
-                    try {
-                      await widget.onAdd();
-                      // Don't set _isAdded here as it will be updated by didUpdateWidget
-                      setState(() {
-                        _isLoading = false;
-                      });
-                    } catch (e) {
-                      setState(() {
-                        _isLoading = false;
-                      });
-                    }
-                  },
-                  style: OutlinedButton.styleFrom(
-                    side: BorderSide(
-                      color: const Color(0xFF2ECC71),
-                    ),
-                    backgroundColor: _isAdded ? const Color(0xFF2ECC71) : Colors.transparent,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
-                    minimumSize: const Size(0, 30),
-                  ),
-                  child: _isLoading
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF2ECC71)),
-                          ),
-                        )
-                      : Text(
-                          _isAdded ? 'Added' : '+ Add',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 15,
-                            color: _isAdded ? Colors.white : const Color(0xFF2ECC71),
-                          ),
-                        ),
-                ),
-              ],
+              ),
             ),
-            const SizedBox(height: 6),
-            // Discount and Price on the same line
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                if (_shouldShowDiscount(widget.discount))
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFF8C32),
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                    child: Text(
-                      '${_formatDiscount(widget.discount)}% Off',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (widget.originalPrice != null && widget.originalPrice != widget.price) ...[
-                      Text(
-                        'Starts from ',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w500,
-                          fontSize: 13,
-                          color: Colors.grey,
-                        ),
-                      ),
-                    ],
-                    Text(
-                      widget.price,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 22,
-                        color: Colors.black,
-                      ),
+            
+            // Gradient overlay for better text readability
+            Container(
+              width: double.infinity,
+              height: double.infinity,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withOpacity(0.4),
+                    Colors.black.withOpacity(0.1),
+                    Colors.black.withOpacity(0.6),
+                  ],
+                ),
+              ),
+            ),
+            
+            // Top left - Package name
+            Positioned(
+              top: 16,
+              left: 16,
+              child: Text(
+                widget.title,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                  shadows: [
+                    Shadow(
+                      color: Colors.black,
+                      offset: Offset(1, 1),
+                      blurRadius: 3,
                     ),
                   ],
                 ),
-              ],
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
-            const Divider(height: 16, thickness: 1.1, color: Color(0xFFE0E0E0)),
-            // Free Home collection (now above the columns)
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                const Icon(Icons.home, color: Color(0xFF2ECC71), size: 14),
-                const SizedBox(width: 3),
-                const Text(
-                  'Free Home collection',
-                  style: TextStyle(
-                    color: Color(0xFF2ECC71),
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            // Tests included and Report time as two columns, each with two lines
-            Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.science, color: Color(0xFF6C7A89), size: 15),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Tests Included',
-                            style: TextStyle(
-                              color: Colors.grey[700],
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            '${widget.tests}',
-                            style: const TextStyle(
-                              color: Colors.black,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 22,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          GestureDetector(
-                            onTap: () => _showTestNamesSheet(context),
-                            child: const Icon(Icons.info_outline, color: Color(0xFF6C7A89), size: 16),
-                          ),
-                        ],
+            
+            // Top right - Offer tag
+            if (_shouldShowDiscount(widget.discount))
+              Positioned(
+                top: 16,
+                right: 16,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFF6B35),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFFFF6B35).withOpacity(0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
                       ),
                     ],
                   ),
+                  child: Text(
+                    '${_formatDiscount(widget.discount)}% OFF',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
                 ),
-                Container(
-                  width: 1.2,
-                  height: 28,
-                  color: const Color(0xFFE0E0E0),
-                ),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.receipt_long, color: Color(0xFF6C7A89), size: 15),
-                          SizedBox(width: 4),
-                          Text(
-                            'Reports Within',
-                            style: TextStyle(
-                              color: Color(0xFF6C7A89),
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                      Text(
-                        widget.reportTime,
-                        style: const TextStyle(
-                          color: Color(0xFFFF8C32),
-                          fontWeight: FontWeight.bold,
-                          fontSize: 20,
+              ),
+            
+            // Bottom section - Left side (Rating and delivery details)
+            Positioned(
+              bottom: 8,
+              left: 16,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Rating and reviews
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withOpacity(0.9),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.star,
+                          color: Colors.white,
+                          size: 16,
                         ),
+                        const SizedBox(width: 4),
+                        const Text(
+                          '4.5',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '1K+ Reviews',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.9),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  // Delivery details
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.home,
+                            color: Colors.white,
+                            size: 14,
+                            shadows: [
+                              Shadow(
+                                color: Colors.black,
+                                offset: Offset(1, 1),
+                                blurRadius: 3,
+                              ),
+                            ],
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Home Collection',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              shadows: [
+                                Shadow(
+                                  color: Colors.black,
+                                  offset: Offset(1, 1),
+                                  blurRadius: 3,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.access_time,
+                            color: Colors.white,
+                            size: 14,
+                            shadows: [
+                              Shadow(
+                                color: Colors.black,
+                                offset: Offset(1, 1),
+                                blurRadius: 3,
+                              ),
+                            ],
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            widget.reportTime,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              shadows: [
+                                Shadow(
+                                  color: Colors.black,
+                                  offset: Offset(1, 1),
+                                  blurRadius: 3,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-            const Spacer(),
+            
+            // Bottom section - Right side (Price and Add to Cart button)
+            Positioned(
+              bottom: 8,
+              right: 16,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  // Starting from text
+                  Text(
+                    'Starting from',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w500,
+                      fontSize: 12,
+                      shadows: [
+                        Shadow(
+                          color: Colors.black,
+                          offset: Offset(1, 1),
+                          blurRadius: 3,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  // Price without background
+                  Text(
+                    widget.price,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                      shadows: [
+                        Shadow(
+                          color: Colors.black,
+                          offset: Offset(1, 1),
+                          blurRadius: 3,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  // Add to cart button
+                  SizedBox(
+                    width: 120,
+                    child: ElevatedButton(
+                      onPressed: _isLoading ? null : () async {
+                        setState(() {
+                          _isLoading = true;
+                        });
+                        
+                        try {
+                          await widget.onAdd();
+                          setState(() {
+                            _isLoading = false;
+                          });
+                        } catch (e) {
+                          setState(() {
+                            _isLoading = false;
+                          });
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _isAdded ? Colors.green : AppColors.primaryBlue,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 4,
+                        shadowColor: Colors.black.withOpacity(0.3),
+                      ),
+                      child: _isLoading
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          : Text(
+                              _isAdded ? 'Added' : 'Add to Cart',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                            ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -460,7 +582,7 @@ class PackageTestCard extends StatelessWidget {
   final bool isInCart;
   final VoidCallback onAddToCart;
   final VoidCallback onRemoveFromCart;
-  final Function(String packageName, String packageId, double originalPrice, {String? organizationId, String? organizationName, double? discountedPrice, double? discountedValue, String? discountType})? onAddToCartApi;
+  final Future<bool> Function(String packageName, String packageId, double originalPrice, {String? organizationId, String? organizationName, double? discountedPrice, double? discountedValue, String? discountType})? onAddToCartApi;
   final Function(String itemId)? onRemoveFromCartApi;
   final bool isLoading;
 
@@ -540,7 +662,7 @@ class PackageTestCard extends StatelessWidget {
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (context) {
-        return _OrganizationSelectionSheet(
+        return OrganizationSelectionSheet(
           package: package,
           onAddToCart: onAddToCart,
           onAddToCartApi: onAddToCartApi,
@@ -843,7 +965,7 @@ class PackageTestCard extends StatelessWidget {
                         '${package['tests']?.length ?? 0} Tests',
                         style: TextStyle(
                           color: Colors.grey[700],
-                          fontSize: 13,
+                          fontSize: 11,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -863,7 +985,7 @@ class PackageTestCard extends StatelessWidget {
                       'Reports in 24 Hrs',
                       style: TextStyle(
                         color: Colors.grey[700],
-                        fontSize: 13,
+                        fontSize: 11,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -948,9 +1070,20 @@ class PackageTestCard extends StatelessWidget {
                             print('🛒 Organization: $organizationName (ID: $organizationId)');
                             print('🛒 Original Price: $originalPrice, Discounted Price: $discountedPrice');
                             
-                            await onAddToCartApi!(packageName, packageId, originalPrice, organizationId: organizationId, organizationName: organizationName, discountedPrice: discountedPrice, discountedValue: discountedValue, discountType: discountType);
+                            try {
+                              final success = await onAddToCartApi!(packageName, packageId, originalPrice, organizationId: organizationId, organizationName: organizationName, discountedPrice: discountedPrice, discountedValue: discountedValue, discountType: discountType);
+                              // Only call onAddToCart if API call was successful
+                              if (success) {
+                                onAddToCart();
+                              }
+                            } catch (e) {
+                              // If API call fails, don't update UI state
+                              print('Failed to add package to cart: $e');
+                            }
+                          } else {
+                            // If no API call needed, just update UI state
+                            onAddToCart();
                           }
-                          onAddToCart();
                         },
                         style: OutlinedButton.styleFrom(
                           side: const BorderSide(color: Color(0xFF2ECC71)),
@@ -998,22 +1131,22 @@ class PackageTestCard extends StatelessWidget {
   }
 }
 
-class _OrganizationSelectionSheet extends StatefulWidget {
+class OrganizationSelectionSheet extends StatefulWidget {
   final Map<String, dynamic> package;
   final VoidCallback onAddToCart;
-  final Function(String packageName, String packageId, double originalPrice, {String? organizationId, String? organizationName, double? discountedPrice, double? discountedValue, String? discountType})? onAddToCartApi;
+  final Future<bool> Function(String packageName, String packageId, double originalPrice, {String? organizationId, String? organizationName, double? discountedPrice, double? discountedValue, String? discountType})? onAddToCartApi;
 
-  const _OrganizationSelectionSheet({
+  const OrganizationSelectionSheet({
     required this.package,
     required this.onAddToCart,
     this.onAddToCartApi,
   });
 
   @override
-  State<_OrganizationSelectionSheet> createState() => _OrganizationSelectionSheetState();
+  State<OrganizationSelectionSheet> createState() => _OrganizationSelectionSheetState();
 }
 
-class _OrganizationSelectionSheetState extends State<_OrganizationSelectionSheet> {
+class _OrganizationSelectionSheetState extends State<OrganizationSelectionSheet> {
   List<Map<String, dynamic>> organizations = [];
   bool isLoading = true;
   bool isLoadingMore = false;

@@ -1,27 +1,69 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'dart:io';
 import '../constants/colors.dart';
 import '../services/api_service.dart';
 
 class AddFamilyMemberBottomSheet {
+  static bool _isShowing = false;
+  
   static void show({
     required BuildContext context,
-    required VoidCallback onMemberAdded,
+    required Function(String?) onMemberAdded,
   }) {
+    // Prevent multiple simultaneous calls
+    if (_isShowing) return;
+    
+    _isShowing = true;
+    
+    // Dismiss keyboard before showing bottom sheet
+    FocusScope.of(context).unfocus();
+    
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
+      isDismissible: true,
+      enableDrag: true,
+      useSafeArea: true,
+      // Android-specific configuration
+      elevation: Platform.isAndroid ? 0 : null,
+      shape: Platform.isAndroid 
+          ? const RoundedRectangleBorder(
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(20),
+                topRight: Radius.circular(20),
+              ),
+            )
+          : null,
       builder: (BuildContext context) {
-        return _AddFamilyMemberForm(onMemberAdded: onMemberAdded);
+        return PopScope(
+          canPop: true,
+          onPopInvoked: (didPop) {
+            if (didPop) {
+              _isShowing = false;
+            }
+          },
+          child: _AddFamilyMemberForm(
+            key: const ValueKey('add_family_member_form'),
+            onMemberAdded: onMemberAdded,
+          ),
+        );
       },
-    );
+    ).then((_) {
+      // Reset the flag when the bottom sheet is closed
+      _isShowing = false;
+    }).catchError((error) {
+      // Reset flag even if there's an error
+      _isShowing = false;
+    });
   }
 }
 
 class _AddFamilyMemberForm extends StatefulWidget {
-  final VoidCallback onMemberAdded;
+  final Function(String?) onMemberAdded;
 
-  const _AddFamilyMemberForm({required this.onMemberAdded});
+  const _AddFamilyMemberForm({required this.onMemberAdded, Key? key}) : super(key: key);
 
   @override
   State<_AddFamilyMemberForm> createState() => _AddFamilyMemberFormState();
@@ -44,12 +86,55 @@ class _AddFamilyMemberFormState extends State<_AddFamilyMemberForm> {
   // Relationships from API
   List<Map<String, dynamic>> _relationships = [];
   bool _isLoadingRelationships = false;
+  
+  // Validation error states
+  String? _firstNameError;
+  String? _lastNameError;
+  String? _relationshipError;
+  String? _dateOfBirthError;
+  String? _genderError;
+  String? _contactNumberError;
+  String? _emailError;
+  
+  // Scroll controller for keyboard handling
+  final ScrollController _scrollController = ScrollController();
+  
+  // Focus nodes for better focus management
+  final FocusNode _firstNameFocus = FocusNode();
+  final FocusNode _lastNameFocus = FocusNode();
+  final FocusNode _contactFocus = FocusNode();
+  final FocusNode _emailFocus = FocusNode();
+  
+  // Global key for email field to ensure it's visible
+  final GlobalKey _emailFieldKey = GlobalKey();
 
   @override
   void initState() {
     super.initState();
     _loadRelationships();
+    
+    // Add focus listeners for automatic scrolling
+    _contactFocus.addListener(() {
+      if (_contactFocus.hasFocus) {
+        _scrollToShowField();
+      }
+    });
+    
+    _emailFocus.addListener(() {
+      if (_emailFocus.hasFocus) {
+        _scrollToShowEmailField();
+      }
+    });
+    
+    // Add listener for keyboard visibility changes
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        // Ensure proper focus handling
+        FocusScope.of(context).unfocus();
+      }
+    });
   }
+
 
   @override
   void dispose() {
@@ -58,6 +143,11 @@ class _AddFamilyMemberFormState extends State<_AddFamilyMemberForm> {
     _contactNumberController.dispose();
     _emailController.dispose();
     _dateOfBirthController.dispose();
+    _scrollController.dispose();
+    _firstNameFocus.dispose();
+    _lastNameFocus.dispose();
+    _contactFocus.dispose();
+    _emailFocus.dispose();
     super.dispose();
   }
 
@@ -102,51 +192,156 @@ class _AddFamilyMemberFormState extends State<_AddFamilyMemberForm> {
     if (picked != null) {
       setState(() {
         _dateOfBirthController.text = "${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}";
+        _dateOfBirthError = null; // Clear error when date is selected
       });
     }
   }
 
+  // Clear all validation errors
+  void _clearValidationErrors() {
+    setState(() {
+      _firstNameError = null;
+      _lastNameError = null;
+      _relationshipError = null;
+      _dateOfBirthError = null;
+      _genderError = null;
+      _contactNumberError = null;
+      _emailError = null;
+    });
+  }
+
+  // Validate email format
+  bool _isValidEmail(String email) {
+    return RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(email);
+  }
+
+  // Validate phone number format
+  bool _isValidPhoneNumber(String phone) {
+    return RegExp(r'^[0-9]{10}$').hasMatch(phone.replaceAll(RegExp(r'[^\d]'), ''));
+  }
+
+  // Scroll to show focused field when keyboard appears
+  void _scrollToShowField() {
+    Future.delayed(const Duration(milliseconds: 200), () {
+      if (_scrollController.hasClients && mounted) {
+        // Scroll to show the focused field without going to the very bottom
+        final maxScroll = _scrollController.position.maxScrollExtent;
+        final targetScroll = maxScroll * 0.8; // Scroll to 80% of max to keep some content visible
+        
+        _scrollController.animateTo(
+          targetScroll,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  // Special scroll function for email field (bottom field)
+  void _scrollToShowEmailField() {
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (mounted) {
+        // Try to ensure the email field is visible
+        if (_emailFieldKey.currentContext != null) {
+          Scrollable.ensureVisible(
+            _emailFieldKey.currentContext!,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+            alignment: 0.8, // Position the field at 80% from top of visible area
+          );
+        } else if (_scrollController.hasClients) {
+          // Fallback to scroll to bottom
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
+      }
+    });
+  }
+
   Future<void> _addFamilyMember() async {
-    // Validation
+    // Clear previous validation errors
+    _clearValidationErrors();
+    
+    bool hasErrors = false;
+    
+    // Validate First Name
     if (_firstNameController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter first name')),
-      );
-      return;
+      setState(() {
+        _firstNameError = 'First name is required';
+        hasErrors = true;
+      });
     }
-
+    
+    // Validate Last Name
     if (_lastNameController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter last name')),
-      );
-      return;
+      setState(() {
+        _lastNameError = 'Last name is required';
+        hasErrors = true;
+      });
     }
-
+    
+    // Validate Relationship
     if (_selectedRelationship == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select relationship')),
-      );
-      return;
+      setState(() {
+        _relationshipError = 'Please select a relationship';
+        hasErrors = true;
+      });
     }
-
+    
+    // Validate Date of Birth
     if (_dateOfBirthController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select date of birth')),
-      );
-      return;
+      setState(() {
+        _dateOfBirthError = 'Date of birth is required';
+        hasErrors = true;
+      });
     }
-
+    
+    // Validate Gender
     if (_selectedGender == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select gender')),
-      );
-      return;
+      setState(() {
+        _genderError = 'Please select gender';
+        hasErrors = true;
+      });
     }
-
+    
+    // Validate Contact Number
     if (_contactNumberController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter contact number')),
-      );
+      setState(() {
+        _contactNumberError = 'Contact number is required';
+        hasErrors = true;
+      });
+    } else if (!_isValidPhoneNumber(_contactNumberController.text.trim())) {
+      setState(() {
+        _contactNumberError = 'Please enter a valid 10-digit phone number';
+        hasErrors = true;
+      });
+    }
+    
+    // Validate Email (optional but if provided, should be valid)
+    if (_emailController.text.trim().isNotEmpty && !_isValidEmail(_emailController.text.trim())) {
+      setState(() {
+        _emailError = 'Please enter a valid email address';
+        hasErrors = true;
+      });
+    }
+    
+    // If there are validation errors, don't proceed
+    if (hasErrors) {
+      // Scroll to the first error field
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please fill in all required fields correctly'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+      });
       return;
     }
 
@@ -200,8 +395,10 @@ class _AddFamilyMemberFormState extends State<_AddFamilyMemberForm> {
         // Close the bottom sheet first
         navigator.pop();
         
-        // Refresh the list
-        widget.onMemberAdded();
+        // Construct the family member name and pass it to the callback
+        final memberName = '${_firstNameController.text.trim()} ${_lastNameController.text.trim()}';
+        print('🔄 AddFamilyMemberBottomSheet: New family member name: $memberName');
+        widget.onMemberAdded(memberName);
         
         // Show success message after a small delay to ensure context is valid
         Future.delayed(const Duration(milliseconds: 100), () {
@@ -243,8 +440,14 @@ class _AddFamilyMemberFormState extends State<_AddFamilyMemberForm> {
 
   @override
   Widget build(BuildContext context) {
+    final screenHeight = MediaQuery.of(context).size.height;
+    
+    // Use a fixed height that doesn't change when keyboard appears
+    // This prevents the bottom sheet from shrinking when text fields are focused
+    final maxHeight = (screenHeight * 0.85).clamp(500.0, screenHeight * 0.85);
+    
     return Container(
-      height: MediaQuery.of(context).size.height * 0.85,
+      height: maxHeight,
       decoration: const BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.only(
@@ -252,7 +455,12 @@ class _AddFamilyMemberFormState extends State<_AddFamilyMemberForm> {
           topRight: Radius.circular(20),
         ),
       ),
-      child: Column(
+      child: ClipRRect(
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(20),
+          topRight: Radius.circular(20),
+        ),
+        child: Column(
         children: [
           // Handle bar
           Container(
@@ -278,7 +486,10 @@ class _AddFamilyMemberFormState extends State<_AddFamilyMemberForm> {
                   ),
                 ),
                 IconButton(
-                  onPressed: () => Navigator.of(context).pop(),
+                  onPressed: () {
+                    FocusScope.of(context).unfocus();
+                    Navigator.of(context).pop();
+                  },
                   icon: const Icon(Icons.close),
                 ),
               ],
@@ -286,28 +497,61 @@ class _AddFamilyMemberFormState extends State<_AddFamilyMemberForm> {
           ),
           // Form content
           Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Column(
-                children: [
+            child: GestureDetector(
+              onTap: () {
+                FocusScope.of(context).unfocus();
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: SingleChildScrollView(
+                  controller: _scrollController,
+                  physics: const ClampingScrollPhysics(),
+                  child: Column(
+                    children: [
                   TextFormField(
                     controller: _firstNameController,
+                    focusNode: _firstNameFocus,
+                    onChanged: (value) {
+                      if (_firstNameError != null) {
+                        setState(() {
+                          _firstNameError = null;
+                        });
+                      }
+                    },
                     decoration: InputDecoration(
-                      labelText: 'First Name',
+                      labelText: 'First Name *',
                       prefixIcon: const Icon(Icons.person, color: AppColors.primaryBlue),
                       filled: true,
                       fillColor: Colors.white,
+                      errorText: _firstNameError,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: Colors.grey, width: 1),
+                        borderSide: BorderSide(
+                          color: _firstNameError != null ? Colors.red : Colors.grey,
+                          width: 1,
+                        ),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: Colors.grey, width: 1),
+                        borderSide: BorderSide(
+                          color: _firstNameError != null ? Colors.red : Colors.grey,
+                          width: 1,
+                        ),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: AppColors.primaryBlue, width: 2),
+                        borderSide: BorderSide(
+                          color: _firstNameError != null ? Colors.red : AppColors.primaryBlue,
+                          width: 2,
+                        ),
+                      ),
+                      errorBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(color: Colors.red, width: 2),
+                      ),
+                      focusedErrorBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(color: Colors.red, width: 2),
                       ),
                       contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
                     ),
@@ -315,22 +559,48 @@ class _AddFamilyMemberFormState extends State<_AddFamilyMemberForm> {
                   const SizedBox(height: 20),
                   TextFormField(
                     controller: _lastNameController,
+                    focusNode: _lastNameFocus,
+                    onChanged: (value) {
+                      if (_lastNameError != null) {
+                        setState(() {
+                          _lastNameError = null;
+                        });
+                      }
+                    },
                     decoration: InputDecoration(
-                      labelText: 'Last Name',
+                      labelText: 'Last Name *',
                       prefixIcon: const Icon(Icons.person, color: AppColors.primaryBlue),
                       filled: true,
                       fillColor: Colors.white,
+                      errorText: _lastNameError,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: Colors.grey, width: 1),
+                        borderSide: BorderSide(
+                          color: _lastNameError != null ? Colors.red : Colors.grey,
+                          width: 1,
+                        ),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: Colors.grey, width: 1),
+                        borderSide: BorderSide(
+                          color: _lastNameError != null ? Colors.red : Colors.grey,
+                          width: 1,
+                        ),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: AppColors.primaryBlue, width: 2),
+                        borderSide: BorderSide(
+                          color: _lastNameError != null ? Colors.red : AppColors.primaryBlue,
+                          width: 2,
+                        ),
+                      ),
+                      errorBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(color: Colors.red, width: 2),
+                      ),
+                      focusedErrorBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(color: Colors.red, width: 2),
                       ),
                       contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
                     ),
@@ -339,7 +609,7 @@ class _AddFamilyMemberFormState extends State<_AddFamilyMemberForm> {
                   DropdownButtonFormField<String>(
                     value: _selectedRelationship,
                     decoration: InputDecoration(
-                      labelText: 'Relationship',
+                      labelText: 'Relationship *',
                       prefixIcon: _isLoadingRelationships
                           ? const SizedBox(
                               width: 20,
@@ -352,17 +622,35 @@ class _AddFamilyMemberFormState extends State<_AddFamilyMemberForm> {
                           : const Icon(Icons.family_restroom, color: AppColors.primaryBlue),
                       filled: true,
                       fillColor: Colors.white,
+                      errorText: _relationshipError,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: Colors.grey, width: 1),
+                        borderSide: BorderSide(
+                          color: _relationshipError != null ? Colors.red : Colors.grey,
+                          width: 1,
+                        ),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: Colors.grey, width: 1),
+                        borderSide: BorderSide(
+                          color: _relationshipError != null ? Colors.red : Colors.grey,
+                          width: 1,
+                        ),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: AppColors.primaryBlue, width: 2),
+                        borderSide: BorderSide(
+                          color: _relationshipError != null ? Colors.red : AppColors.primaryBlue,
+                          width: 2,
+                        ),
+                      ),
+                      errorBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(color: Colors.red, width: 2),
+                      ),
+                      focusedErrorBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(color: Colors.red, width: 2),
                       ),
                       contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
                     ),
@@ -402,6 +690,9 @@ class _AddFamilyMemberFormState extends State<_AddFamilyMemberForm> {
                     onChanged: _isLoadingRelationships ? null : (value) {
                       setState(() {
                         _selectedRelationship = value;
+                        if (_relationshipError != null) {
+                          _relationshipError = null;
+                        }
                       });
                     },
                   ),
@@ -411,21 +702,39 @@ class _AddFamilyMemberFormState extends State<_AddFamilyMemberForm> {
                     readOnly: true,
                     onTap: _selectDate,
                     decoration: InputDecoration(
-                      labelText: 'Date of Birth',
+                      labelText: 'Date of Birth *',
                       prefixIcon: const Icon(Icons.cake, color: AppColors.primaryBlue),
                       filled: true,
                       fillColor: Colors.white,
+                      errorText: _dateOfBirthError,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: Colors.grey, width: 1),
+                        borderSide: BorderSide(
+                          color: _dateOfBirthError != null ? Colors.red : Colors.grey,
+                          width: 1,
+                        ),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: Colors.grey, width: 1),
+                        borderSide: BorderSide(
+                          color: _dateOfBirthError != null ? Colors.red : Colors.grey,
+                          width: 1,
+                        ),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: AppColors.primaryBlue, width: 2),
+                        borderSide: BorderSide(
+                          color: _dateOfBirthError != null ? Colors.red : AppColors.primaryBlue,
+                          width: 2,
+                        ),
+                      ),
+                      errorBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(color: Colors.red, width: 2),
+                      ),
+                      focusedErrorBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(color: Colors.red, width: 2),
                       ),
                       contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
                     ),
@@ -434,21 +743,39 @@ class _AddFamilyMemberFormState extends State<_AddFamilyMemberForm> {
                   DropdownButtonFormField<String>(
                     value: _selectedGender,
                     decoration: InputDecoration(
-                      labelText: 'Gender',
+                      labelText: 'Gender *',
                       prefixIcon: const Icon(Icons.person_outline, color: AppColors.primaryBlue),
                       filled: true,
                       fillColor: Colors.white,
+                      errorText: _genderError,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: Colors.grey, width: 1),
+                        borderSide: BorderSide(
+                          color: _genderError != null ? Colors.red : Colors.grey,
+                          width: 1,
+                        ),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: Colors.grey, width: 1),
+                        borderSide: BorderSide(
+                          color: _genderError != null ? Colors.red : Colors.grey,
+                          width: 1,
+                        ),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: AppColors.primaryBlue, width: 2),
+                        borderSide: BorderSide(
+                          color: _genderError != null ? Colors.red : AppColors.primaryBlue,
+                          width: 2,
+                        ),
+                      ),
+                      errorBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(color: Colors.red, width: 2),
+                      ),
+                      focusedErrorBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(color: Colors.red, width: 2),
                       ),
                       contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
                     ),
@@ -460,28 +787,57 @@ class _AddFamilyMemberFormState extends State<_AddFamilyMemberForm> {
                     onChanged: (value) {
                       setState(() {
                         _selectedGender = value;
+                        if (_genderError != null) {
+                          _genderError = null;
+                        }
                       });
                     },
                   ),
                   const SizedBox(height: 20),
                   TextFormField(
                     controller: _contactNumberController,
+                    focusNode: _contactFocus,
+                    onChanged: (value) {
+                      if (_contactNumberError != null) {
+                        setState(() {
+                          _contactNumberError = null;
+                        });
+                      }
+                    },
                     decoration: InputDecoration(
-                      labelText: 'Contact Number',
+                      labelText: 'Contact Number *',
                       prefixIcon: const Icon(Icons.phone, color: AppColors.primaryBlue),
                       filled: true,
                       fillColor: Colors.white,
+                      errorText: _contactNumberError,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: Colors.grey, width: 1),
+                        borderSide: BorderSide(
+                          color: _contactNumberError != null ? Colors.red : Colors.grey,
+                          width: 1,
+                        ),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: Colors.grey, width: 1),
+                        borderSide: BorderSide(
+                          color: _contactNumberError != null ? Colors.red : Colors.grey,
+                          width: 1,
+                        ),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: AppColors.primaryBlue, width: 2),
+                        borderSide: BorderSide(
+                          color: _contactNumberError != null ? Colors.red : AppColors.primaryBlue,
+                          width: 2,
+                        ),
+                      ),
+                      errorBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(color: Colors.red, width: 2),
+                      ),
+                      focusedErrorBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(color: Colors.red, width: 2),
                       ),
                       contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
                     ),
@@ -489,30 +845,61 @@ class _AddFamilyMemberFormState extends State<_AddFamilyMemberForm> {
                   ),
                   const SizedBox(height: 20),
                   TextFormField(
+                    key: _emailFieldKey,
                     controller: _emailController,
+                    focusNode: _emailFocus,
+                    onTap: _scrollToShowEmailField,
+                    onChanged: (value) {
+                      if (_emailError != null) {
+                        setState(() {
+                          _emailError = null;
+                        });
+                      }
+                    },
                     decoration: InputDecoration(
                       labelText: 'Email (Optional)',
                       prefixIcon: const Icon(Icons.email, color: AppColors.primaryBlue),
                       filled: true,
                       fillColor: Colors.white,
+                      errorText: _emailError,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: Colors.grey, width: 1),
+                        borderSide: BorderSide(
+                          color: _emailError != null ? Colors.red : Colors.grey,
+                          width: 1,
+                        ),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: Colors.grey, width: 1),
+                        borderSide: BorderSide(
+                          color: _emailError != null ? Colors.red : Colors.grey,
+                          width: 1,
+                        ),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: AppColors.primaryBlue, width: 2),
+                        borderSide: BorderSide(
+                          color: _emailError != null ? Colors.red : AppColors.primaryBlue,
+                          width: 2,
+                        ),
+                      ),
+                      errorBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(color: Colors.red, width: 2),
+                      ),
+                      focusedErrorBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(color: Colors.red, width: 2),
                       ),
                       contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
                     ),
                     keyboardType: TextInputType.emailAddress,
                   ),
-                  const SizedBox(height: 20),
-                ],
+                  // Add extra padding at the bottom for better keyboard handling
+                  SizedBox(height: MediaQuery.of(context).viewInsets.bottom > 0 ? 150 : 60),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
@@ -591,6 +978,7 @@ class _AddFamilyMemberFormState extends State<_AddFamilyMemberForm> {
             ),
           ),
         ],
+        ),
       ),
     );
   }

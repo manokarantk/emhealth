@@ -12,6 +12,7 @@ class SingleLabSchedulingScreen extends StatefulWidget {
   final double labOriginalPrice;
   final double labDiscountedPrice;
   final String labDiscount;
+  final VoidCallback? onCartChanged; // Callback for cart changes
 
   const SingleLabSchedulingScreen({
     super.key,
@@ -23,6 +24,7 @@ class SingleLabSchedulingScreen extends StatefulWidget {
     required this.labOriginalPrice,
     required this.labDiscountedPrice,
     required this.labDiscount,
+    this.onCartChanged, // Optional callback for cart changes
   });
 
   @override
@@ -31,8 +33,8 @@ class SingleLabSchedulingScreen extends StatefulWidget {
 
 class _SingleLabSchedulingScreenState extends State<SingleLabSchedulingScreen> {
   bool isHomeCollection = true;
-  DateTime? selectedDate = null;
-  String? selectedTime = null;
+  DateTime? selectedDate;
+  String? selectedTime;
   Map<String, dynamic>? timeslotData;
   bool isLoadingTimeslots = false;
   
@@ -43,6 +45,11 @@ class _SingleLabSchedulingScreenState extends State<SingleLabSchedulingScreen> {
   @override
   void initState() {
     super.initState();
+    // Ensure no default date/time is set
+    selectedDate = null;
+    selectedTime = null;
+    timeslotData = null;
+    print('🔧 SingleLabSchedulingScreen initialized - selectedDate: $selectedDate, selectedTime: $selectedTime');
     // Don't load timeslots until user selects a date
   }
 
@@ -50,6 +57,9 @@ class _SingleLabSchedulingScreenState extends State<SingleLabSchedulingScreen> {
     try {
       setState(() {
         isLoadingTimeslots = true;
+        // Clear selected time when loading new timeslots
+        selectedTime = null;
+        showTimeError = false;
       });
       
       final labId = widget.selectedLab['id']?.toString() ?? '';
@@ -66,12 +76,14 @@ class _SingleLabSchedulingScreenState extends State<SingleLabSchedulingScreen> {
         });
       } else {
         setState(() {
+          timeslotData = null;
           isLoadingTimeslots = false;
         });
       }
     } catch (e) {
       print('❌ Error loading timeslots: $e');
       setState(() {
+        timeslotData = null;
         isLoadingTimeslots = false;
       });
     }
@@ -97,6 +109,43 @@ class _SingleLabSchedulingScreenState extends State<SingleLabSchedulingScreen> {
     });
   }
 
+  List<DropdownMenuItem<String>> _getTimeslotItems() {
+    if (selectedDate == null || timeslotData == null) {
+      return [];
+    }
+
+    // Extract timeslots from API response
+    final timeslots = timeslotData!['timeslots'] as List<dynamic>? ?? [];
+    
+    if (timeslots.isEmpty) {
+      return [];
+    }
+
+    return timeslots.map((timeslot) {
+      final startTime = timeslot['start_time']?.toString() ?? '';
+      final endTime = timeslot['end_time']?.toString() ?? '';
+      final isAvailable = timeslot['is_available'] == true;
+      
+      // Format time display
+      String timeDisplay = '';
+      if (startTime.isNotEmpty && endTime.isNotEmpty) {
+        timeDisplay = '$startTime - $endTime';
+      } else if (startTime.isNotEmpty) {
+        timeDisplay = startTime;
+      }
+      
+      return DropdownMenuItem<String>(
+        value: timeDisplay,
+        child: Text(
+          timeDisplay,
+          style: TextStyle(
+            color: isAvailable ? Colors.black : Colors.grey,
+          ),
+        ),
+      );
+    }).toList();
+  }
+
   void _showCustomDatePicker() {
     showDialog(
       context: context,
@@ -118,7 +167,7 @@ class _SingleLabSchedulingScreenState extends State<SingleLabSchedulingScreen> {
                 const SizedBox(height: 16),
                 Expanded(
                   child: CalendarDatePicker(
-                    initialDate: selectedDate ?? DateTime.now(),
+                    initialDate: DateTime.now(),
                     firstDate: DateTime.now(),
                     lastDate: DateTime.now().add(const Duration(days: 30)),
                     onDateChanged: (DateTime date) {
@@ -183,6 +232,13 @@ class _SingleLabSchedulingScreenState extends State<SingleLabSchedulingScreen> {
           labDiscount: widget.labDiscount,
           organizationId: widget.selectedLab['id']?.toString() ?? '',
           cartData: widget.cartData,
+          onCartChanged: () {
+            // Notify parent that cart has been modified
+            if (widget.onCartChanged != null) {
+              print('🔄 Cart changed from single lab checkout - triggering parent cart refresh');
+              widget.onCartChanged!();
+            }
+          },
           schedulingData: {
             'isHomeCollection': isHomeCollection,
             'selectedDate': selectedDate,
@@ -275,7 +331,7 @@ class _SingleLabSchedulingScreenState extends State<SingleLabSchedulingScreen> {
                   itemCount: services.length,
                   itemBuilder: (context, index) {
                     final service = services[index];
-                    final serviceName = service['name']?.toString() ?? 'Unknown Service';
+                    final serviceName = service['name']?.toString() ?? 'Service';
                     final servicePrice = service['price']?.toString() ?? '0';
                     
                     return Container(
@@ -484,27 +540,23 @@ class _SingleLabSchedulingScreenState extends State<SingleLabSchedulingScreen> {
                                 child: DropdownButton<String>(
                                   value: selectedTime,
                                   hint: Text(
-                                    'Select Time',
+                                    selectedDate == null 
+                                      ? 'Select Date First'
+                                      : timeslotData == null 
+                                        ? 'No Timeslots Available'
+                                        : 'Select Time',
                                     style: TextStyle(
                                       fontSize: 14,
                                       color: showTimeError ? Colors.red[600] : Colors.grey[500],
                                       fontWeight: FontWeight.w500,
                                     ),
                                   ),
-                                  onChanged: (value) {
+                                  onChanged: selectedDate != null && timeslotData != null ? (value) {
                                     if (value != null) {
                                       _onTimeChanged(value);
                                     }
-                                  },
-                                  items: [
-                                    '10:00 AM - 12:00 PM',
-                                    '12:00 PM - 2:00 PM',
-                                    '2:00 PM - 4:00 PM',
-                                    '4:00 PM - 6:00 PM',
-                                  ].map((time) => DropdownMenuItem(
-                                    value: time,
-                                    child: Text(time),
-                                  )).toList(),
+                                  } : null,
+                                  items: _getTimeslotItems(),
                                   underline: Container(),
                                   style: TextStyle(
                                     fontSize: 14,

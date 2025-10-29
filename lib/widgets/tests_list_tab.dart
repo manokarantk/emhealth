@@ -235,7 +235,7 @@ class _TestsListTabState extends State<TestsListTab> {
     }
   }
 
-  Future<void> _addToCartApi(String testName, String labTestId, double originalPrice, {double? discountedPrice, double? discountedValue, String? discountType}) async {
+  Future<bool> _addToCartApi(String testName, String labTestId, double originalPrice, {double? discountedPrice, double? discountedValue, String? discountType}) async {
     // Set loading state for this specific test using test ID
     setState(() {
       loadingStates[labTestId] = true;
@@ -262,6 +262,7 @@ class _TestsListTabState extends State<TestsListTab> {
             ),
           );
         }
+        return true; // Return success
       } else {
         // Show error message
         if (mounted) {
@@ -272,6 +273,7 @@ class _TestsListTabState extends State<TestsListTab> {
             ),
           );
         }
+        throw Exception(result['message'] ?? 'Failed to add item to cart'); // Throw exception for failure
       }
     } catch (e) {
       if (mounted) {
@@ -282,6 +284,7 @@ class _TestsListTabState extends State<TestsListTab> {
           ),
         );
       }
+      throw e; // Re-throw the exception
     } finally {
       // Clear loading state using test ID
       if (mounted) {

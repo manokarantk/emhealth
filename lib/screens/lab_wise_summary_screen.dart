@@ -223,6 +223,43 @@ class _LabWiseSummaryScreenState extends State<LabWiseSummaryScreen> {
     });
   }
 
+  // Check if time selection is enabled for a lab
+  bool _isTimeSelectionEnabled(String labId) {
+    return labSelectedDates[labId] != null && 
+           labTimeslots[labId] != null && 
+           !labLoadingTimeslots[labId]!;
+  }
+
+  // Get the appropriate text for time selection
+  String _getTimeSelectionText(String labId) {
+    if (labSelectedTimes[labId] != null) {
+      return _getDisplayTime(labSelectedTimes[labId]!);
+    } else if (labSelectedDates[labId] == null) {
+      return 'Select Date First';
+    } else if (labLoadingTimeslots[labId] == true) {
+      return 'Loading Times...';
+    } else if (labTimeslots[labId] == null) {
+      return 'No Times Available';
+    } else {
+      return 'Select Time';
+    }
+  }
+
+  // Get the appropriate color for time selection text
+  Color _getTimeSelectionTextColor(String labId) {
+    if (labSelectedTimes[labId] != null) {
+      return Colors.black;
+    } else if (labSelectedDates[labId] == null) {
+      return Colors.grey[400]!;
+    } else if (labLoadingTimeslots[labId] == true) {
+      return Colors.grey[500]!;
+    } else if (labTimeslots[labId] == null) {
+      return Colors.grey[400]!;
+    } else {
+      return Colors.grey[500]!;
+    }
+  }
+
   void _showCustomDatePicker(String labId) {
     showDialog(
       context: context,
@@ -378,10 +415,12 @@ class _LabWiseSummaryScreenState extends State<LabWiseSummaryScreen> {
 
   // Get compact time slot format for single line display
   String _getCompactTimeSlot(String timeSlot) {
-    // If it's a range like "09:00 AM - 09:30 AM", extract just the start time
+    // If it's a range like "09:00 AM - 09:30 AM", show both start and end time
     if (timeSlot.contains(' - ')) {
-      final startTime = timeSlot.split(' - ')[0].trim();
-      return _makeTimeCompact(startTime);
+      final parts = timeSlot.split(' - ');
+      final startTime = parts[0].trim();
+      final endTime = parts[1].trim();
+      return '${_makeTimeCompact(startTime)}-${_makeTimeCompact(endTime)}';
     }
     return _makeTimeCompact(timeSlot);
   }
@@ -516,6 +555,7 @@ class _LabWiseSummaryScreenState extends State<LabWiseSummaryScreen> {
     
     // Validate that all labs have date and time selected
     bool hasError = false;
+    List<String> missingFields = [];
     
     for (final labId in labServices.keys) {
       if (labSelectedDates[labId] == null) {
@@ -523,6 +563,7 @@ class _LabWiseSummaryScreenState extends State<LabWiseSummaryScreen> {
           labDateErrors[labId] = true;
         });
         hasError = true;
+        missingFields.add('date');
       }
       
       if (labSelectedTimes[labId] == null) {
@@ -530,10 +571,28 @@ class _LabWiseSummaryScreenState extends State<LabWiseSummaryScreen> {
           labTimeErrors[labId] = true;
         });
         hasError = true;
+        missingFields.add('time');
       }
     }
     
     if (hasError) {
+      // Show toast message for missing mandatory fields
+      String errorMessage = 'Please select ';
+      if (missingFields.contains('date') && missingFields.contains('time')) {
+        errorMessage += 'date and time for all labs';
+      } else if (missingFields.contains('date')) {
+        errorMessage += 'date for all labs';
+      } else if (missingFields.contains('time')) {
+        errorMessage += 'time for all labs';
+      }
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(errorMessage),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
       return;
     }
     
@@ -1110,7 +1169,7 @@ class _LabWiseSummaryScreenState extends State<LabWiseSummaryScreen> {
       // Count tests vs packages - improved logic
       final testId = service['lab_test_id']?.toString() ?? '';
       final packageId = service['lab_package_id']?.toString() ?? '';
-      final serviceName = service['name']?.toString() ?? service['testname']?.toString() ?? 'Unknown Service';
+      final serviceName = service['name']?.toString() ?? service['testname']?.toString() ?? 'Service';
       
       print('📊 Service: $serviceName');
       print('🔍 Full service data: $service');
@@ -1273,31 +1332,38 @@ class _LabWiseSummaryScreenState extends State<LabWiseSummaryScreen> {
                   },
                 ),
                 
-                // Enhanced Add More button
-                Center(
-                  child: GestureDetector(
-                    onTap: () => _showAddMoreItemsBottomSheet(labId, labName),
-                    child: Container(
-                      margin: const EdgeInsets.symmetric(vertical: 8),
-                      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryBlue.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: AppColors.primaryBlue.withOpacity(0.3),
-                          width: 1,
-                        ),
-                      ),
-                      child: Text(
-                        'Add More Tests',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.primaryBlue,
+                // Action buttons row
+                Row(
+                  children: [
+                    // Add More Tests button
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => _showAddMoreItemsBottomSheet(labId, labName),
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(vertical: 8),
+                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                          decoration: BoxDecoration(
+                            color: AppColors.primaryBlue.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: AppColors.primaryBlue.withOpacity(0.3),
+                              width: 1,
+                            ),
+                          ),
+                          child: Text(
+                            'Add More Tests',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.primaryBlue,
+                            ),
+                          ),
                         ),
                       ),
                     ),
-                  ),
+
+                  ],
                 ),
               ],
             ),
@@ -1423,19 +1489,30 @@ class _LabWiseSummaryScreenState extends State<LabWiseSummaryScreen> {
                     // Time selection
                     Expanded(
                       child: GestureDetector(
-                        onTap: () => _showTimeSlotBottomSheet(labId),
+                        onTap: () {
+                          // Only allow time selection if date is selected and timeslots are loaded
+                          if (labSelectedDates[labId] != null && 
+                              labTimeslots[labId] != null && 
+                              !labLoadingTimeslots[labId]!) {
+                            _showTimeSlotBottomSheet(labId);
+                          }
+                        },
                         child: Container(
                           height: 50,
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                           decoration: BoxDecoration(
-                            color: labTimeErrors[labId] == true 
-                              ? Colors.red.withOpacity(0.1)
-                              : Colors.grey[50],
+                            color: _isTimeSelectionEnabled(labId)
+                              ? (labTimeErrors[labId] == true 
+                                  ? Colors.red.withOpacity(0.1)
+                                  : Colors.grey[50])
+                              : Colors.grey[100],
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
                               color: labTimeErrors[labId] == true 
                                 ? Colors.red 
-                                : Colors.grey.withOpacity(0.2)
+                                : (_isTimeSelectionEnabled(labId) 
+                                    ? Colors.grey.withOpacity(0.2)
+                                    : Colors.grey.withOpacity(0.3))
                             ),
                           ),
                           child: labLoadingTimeslots[labId] == true
@@ -1466,18 +1543,18 @@ class _LabWiseSummaryScreenState extends State<LabWiseSummaryScreen> {
                                             fontSize: 10,
                                             color: labTimeErrors[labId] == true 
                                               ? Colors.red[600] 
-                                              : Colors.grey[600],
+                                              : (_isTimeSelectionEnabled(labId) 
+                                                  ? Colors.grey[600] 
+                                                  : Colors.grey[400]),
                                             fontWeight: FontWeight.w500,
                                           ),
                                         ),
                                         const SizedBox(height: 1),
                                         Text(
-                                          labSelectedTimes[labId] != null 
-                                            ? _getDisplayTime(labSelectedTimes[labId]!)
-                                            : 'Select Time',
+                                          _getTimeSelectionText(labId),
                                           style: TextStyle(
                                             fontSize: 12,
-                                            color: labSelectedTimes[labId] != null ? Colors.black : Colors.grey[500],
+                                            color: _getTimeSelectionTextColor(labId),
                                             fontWeight: FontWeight.w600,
                                           ),
                                         ),
@@ -1486,7 +1563,9 @@ class _LabWiseSummaryScreenState extends State<LabWiseSummaryScreen> {
                                   ),
                                   Icon(
                                     Icons.arrow_drop_down,
-                                    color: Colors.grey[400],
+                                    color: _isTimeSelectionEnabled(labId) 
+                                        ? Colors.grey[400] 
+                                        : Colors.grey[300],
                                     size: 20,
                                   ),
                                 ],
@@ -1541,7 +1620,7 @@ class _LabWiseSummaryScreenState extends State<LabWiseSummaryScreen> {
 
 
   Widget _buildServiceItem(Map<String, dynamic> service) {
-    final serviceName = service['name']?.toString() ?? service['testname']?.toString() ?? 'Unknown Service';
+    final serviceName = service['name']?.toString() ?? service['testname']?.toString() ?? 'Service';
     final originalPrice = double.tryParse(service['baseprice']?.toString() ?? '0') ?? 0.0;
     final discountedPrice = double.tryParse(service['discountedprice']?.toString() ?? '0') ?? 0.0;
     final discountValue = service['discountvalue']?.toString() ?? '0';
@@ -1822,9 +1901,11 @@ class _LabWiseSummaryScreenState extends State<LabWiseSummaryScreen> {
     }
   }
 
+
+
   // Remove item from cart
   Future<void> _removeItemFromCart(Map<String, dynamic> service) async {
-    final serviceName = service['name']?.toString() ?? service['testname']?.toString() ?? 'Unknown Service';
+          final serviceName = service['name']?.toString() ?? service['testname']?.toString() ?? 'Service';
     
     // Prevent multiple removal attempts
     if (removingItems.contains(serviceName)) {
@@ -1891,13 +1972,7 @@ class _LabWiseSummaryScreenState extends State<LabWiseSummaryScreen> {
       final result = await _apiService.removeFromCart(cartItemId);
       
       if (result['success']) {        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('$serviceName removed from cart'),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 2),
-          ),
-        );
+        // Item removed from cart - no toast message needed
         
         print('✅ Item removal successful - triggering cart refresh');
         // Refresh the screen data
@@ -2437,13 +2512,9 @@ class _AddMoreItemsBottomSheetState extends State<_AddMoreItemsBottomSheet> {
         ? (item['packagename'] ?? item['name'] ?? 'Package')
         : (item['testname'] ?? item['shortname'] ?? item['name'] ?? 'Test');
     
+    // If item is already in cart, remove it instead
     if (widget.cartItems.contains(itemName)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('$itemName is already in cart'),
-          backgroundColor: Colors.orange,
-        ),
-      );
+      await _removeFromCart(item, isPackage);
       return;
     }
     
@@ -2480,13 +2551,7 @@ class _AddMoreItemsBottomSheetState extends State<_AddMoreItemsBottomSheet> {
       );
 
       if (result['success']) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('$itemName added to cart'),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 2),
-          ),
-        );
+        // Item added to cart - no toast message needed
         
         widget.onItemAdded();
         Navigator.of(context).pop();
@@ -2502,6 +2567,74 @@ class _AddMoreItemsBottomSheetState extends State<_AddMoreItemsBottomSheet> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error adding item: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+
+    setState(() {
+      _loadingItems.remove(itemName);
+    });
+  }
+
+  Future<void> _removeFromCart(Map<String, dynamic> item, bool isPackage) async {
+    final itemName = isPackage 
+        ? (item['packagename'] ?? item['name'] ?? 'Package')
+        : (item['testname'] ?? item['shortname'] ?? item['name'] ?? 'Test');
+    
+    setState(() {
+      _loadingItems.add(itemName);
+    });
+
+    try {
+      // Get cart data to find the item ID
+      final cartResult = await _apiService.getCart();
+      
+      if (cartResult['success'] && cartResult['data'] != null) {
+        final cartItems = List<Map<String, dynamic>>.from(cartResult['data']['items'] ?? []);
+        
+        // Find the item in cart by name
+        final cartItem = cartItems.firstWhere(
+          (cartItem) => cartItem['test_name']?.toString() == itemName,
+          orElse: () => <String, dynamic>{},
+        );
+        
+        if (cartItem.isNotEmpty && cartItem['id'] != null) {
+          final removeResult = await _apiService.removeFromCart(cartItem['id'].toString());
+          
+          if (removeResult['success']) {
+            // Item removed from cart - no toast message needed
+            
+            widget.onItemAdded();
+            Navigator.of(context).pop();
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(removeResult['message'] ?? 'Failed to remove item'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Item not found in cart'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to get cart data'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error removing item: $e'),
           backgroundColor: Colors.red,
         ),
       );
@@ -2666,24 +2799,50 @@ class _AddMoreItemsBottomSheetState extends State<_AddMoreItemsBottomSheet> {
 
         return Card(
           margin: const EdgeInsets.only(bottom: 16),
-          elevation: 0,
+          elevation: isInCart ? 4 : 0,
+          color: Colors.white,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
-            side: BorderSide(color: Colors.grey[200]!, width: 1),
+            side: BorderSide(
+              color: isInCart ? AppColors.primaryBlue : Colors.grey[200]!,
+              width: isInCart ? 2 : 1,
+            ),
           ),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  testName,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18,
-                    color: Colors.black87,
+                      child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          testName,
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18,
+                            color: isInCart ? AppColors.primaryBlue : Colors.black87,
+                          ),
+                        ),
+                      ),
+                      if (isInCart)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: AppColors.primaryBlue,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Text(
+                            'SELECTED',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
-                ),
                 const SizedBox(height: 8),
                 const Text(
                   'Also known as:',
@@ -2878,10 +3037,14 @@ class _AddMoreItemsBottomSheetState extends State<_AddMoreItemsBottomSheet> {
 
         return Card(
           margin: const EdgeInsets.only(bottom: 12),
-          elevation: 0,
+          elevation: isInCart ? 4 : 0,
+          color: Colors.white,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
-            side: BorderSide(color: Colors.grey[200]!, width: 1),
+            side: BorderSide(
+              color: isInCart ? AppColors.primaryBlue : Colors.grey[200]!,
+              width: isInCart ? 2 : 1,
+            ),
           ),
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -2896,15 +3059,37 @@ class _AddMoreItemsBottomSheetState extends State<_AddMoreItemsBottomSheet> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            packageName,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                              color: Colors.black87,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  packageName,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                    color: isInCart ? AppColors.primaryBlue : Colors.black87,
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (isInCart)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primaryBlue,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Text(
+                                    'SELECTED',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 8,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
                         ],
                       ),

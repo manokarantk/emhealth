@@ -1,26 +1,28 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import '../constants/colors.dart';
+import '../services/api_service.dart';
 
 /// LocationSelectionScreen
 /// 
-/// A comprehensive location selection screen for Tamil Nadu with primary color theme.
+/// A comprehensive location selection screen with primary color theme.
 /// Features:
 /// - Primary color theme with search functionality
-/// - Current location detection using GPS (Tamil Nadu focused)
-/// - Popular Tamil Nadu cities grid with custom icons
-/// - Complete list of all Tamil Nadu cities with search filtering
+/// - Current location detection using GPS
+/// - Dynamic area list fetched from API (/areas/search endpoint)
+/// - Real-time search with API integration
 /// - Permission handling for location services
+/// - Loading states and error handling
 /// 
 /// Usage:
 /// ```dart
 /// Navigator.of(context).push(
 ///   MaterialPageRoute(
 ///     builder: (context) => LocationSelectionScreen(
-///       currentLocation: 'Delhi',
-///       onLocationSelected: (String city) {
-///         // Handle the selected city
-///         print('Selected city: $city');
+///       currentLocation: 'Chennai',
+///       onLocationSelected: (String area) {
+///         // Handle the selected area
+///         print('Selected area: $area');
 ///       },
 ///     ),
 ///   ),
@@ -29,13 +31,14 @@ import '../constants/colors.dart';
 /// 
 /// Parameters:
 /// - currentLocation: The currently selected location (optional)
-/// - onLocationSelected: Callback function that receives the selected city name
+/// - onLocationSelected: Callback function that receives the selected area name
 /// 
 /// The screen automatically handles:
 /// - Location permissions
 /// - GPS service availability
-/// - Search functionality
-/// - Error states and user feedback
+/// - API-based area search
+/// - Loading states and error handling
+/// - Network connectivity issues
 class LocationSelectionScreen extends StatefulWidget {
   final String? currentLocation;
   final Function(String) onLocationSelected;
@@ -53,84 +56,18 @@ class LocationSelectionScreen extends StatefulWidget {
 class _LocationSelectionScreenState extends State<LocationSelectionScreen> {
   final TextEditingController _searchController = TextEditingController();
   bool _isLoadingLocation = false;
-  List<String> _filteredCities = [];
+  List<Map<String, dynamic>> _areas = [];
+  List<Map<String, dynamic>> _filteredAreas = [];
   bool _isSearching = false;
-
-  // Popular cities with their icons
-  final List<Map<String, dynamic>> _popularCities = [
-    {
-      'name': 'Chennai',
-      'icon': Icons.location_city,
-      'iconColor': Colors.orange,
-    },
-    {
-      'name': 'Coimbatore',
-      'icon': Icons.location_city,
-      'iconColor': Colors.blue,
-    },
-    {
-      'name': 'Madurai',
-      'icon': Icons.location_city,
-      'iconColor': Colors.purple,
-    },
-    {
-      'name': 'Salem',
-      'icon': Icons.location_city,
-      'iconColor': Colors.green,
-    },
-    {
-      'name': 'Tiruchirappalli',
-      'icon': Icons.location_city,
-      'iconColor': Colors.red,
-    },
-    {
-      'name': 'Vellore',
-      'icon': Icons.location_city,
-      'iconColor': Colors.teal,
-    },
-  ];
-
-  // All cities list - Tamil Nadu only
-  final List<String> _allCities = [
-    'Ariyalur',
-    'Chennai',
-    'Coimbatore',
-    'Cuddalore',
-    'Dharmapuri',
-    'Dindigul',
-    'Erode',
-    'Kanchipuram',
-    'Kanyakumari',
-    'Karur',
-    'Krishnagiri',
-    'Madurai',
-    'Nagapattinam',
-    'Namakkal',
-    'Nilgiris',
-    'Perambalur',
-    'Pudukkottai',
-    'Ramanathapuram',
-    'Salem',
-    'Sivaganga',
-    'Thanjavur',
-    'Theni',
-    'Thoothukkudi',
-    'Tiruchirappalli',
-    'Tirunelveli',
-    'Tiruppur',
-    'Tiruvallur',
-    'Tiruvannamalai',
-    'Tiruvarur',
-    'Vellore',
-    'Villupuram',
-    'Virudhunagar',
-  ];
+  bool _isLoadingAreas = false;
+  String? _errorMessage;
+  final ApiService _apiService = ApiService();
 
   @override
   void initState() {
     super.initState();
-    _filteredCities = List.from(_allCities);
     _searchController.addListener(_onSearchChanged);
+    _loadInitialAreas();
   }
 
   @override
@@ -140,17 +77,94 @@ class _LocationSelectionScreenState extends State<LocationSelectionScreen> {
   }
 
   void _onSearchChanged() {
-    final query = _searchController.text.toLowerCase();
+    final query = _searchController.text.trim();
     setState(() {
       _isSearching = query.isNotEmpty;
-      if (query.isEmpty) {
-        _filteredCities = List.from(_allCities);
-      } else {
-        _filteredCities = _allCities
-            .where((city) => city.toLowerCase().contains(query))
-            .toList();
-      }
     });
+    
+    if (query.isEmpty) {
+      _filteredAreas = List.from(_areas);
+    } else {
+      _searchAreas(query);
+    }
+  }
+
+  Future<void> _loadInitialAreas() async {
+    setState(() {
+      _isLoadingAreas = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final result = await _apiService.getAreasSearch(context: context);
+      
+      if (result['success'] == true && result['data'] != null) {
+        final areasData = result['data'];
+        List<Map<String, dynamic>> areas = [];
+        
+        if (areasData is List) {
+          areas = areasData.cast<Map<String, dynamic>>();
+        } else if (areasData is Map && areasData['areas'] != null) {
+          areas = (areasData['areas'] as List).cast<Map<String, dynamic>>();
+        }
+        
+        setState(() {
+          _areas = areas;
+          _filteredAreas = List.from(_areas);
+          _isLoadingAreas = false;
+        });
+      } else {
+        setState(() {
+          _errorMessage = result['message'] ?? 'Failed to load areas';
+          _isLoadingAreas = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Network error occurred';
+        _isLoadingAreas = false;
+      });
+    }
+  }
+
+  Future<void> _searchAreas(String query) async {
+    setState(() {
+      _isLoadingAreas = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final result = await _apiService.getAreasSearch(
+        search: query,
+        context: context,
+      );
+      
+      if (result['success'] == true && result['data'] != null) {
+        final areasData = result['data'];
+        List<Map<String, dynamic>> areas = [];
+        
+        if (areasData is List) {
+          areas = areasData.cast<Map<String, dynamic>>();
+        } else if (areasData is Map && areasData['areas'] != null) {
+          areas = (areasData['areas'] as List).cast<Map<String, dynamic>>();
+        }
+        
+        setState(() {
+          _filteredAreas = areas;
+          _isLoadingAreas = false;
+        });
+      } else {
+        setState(() {
+          _errorMessage = result['message'] ?? 'Failed to search areas';
+          _isLoadingAreas = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Network error occurred';
+        _isLoadingAreas = false;
+      });
+    }
   }
 
   Future<void> _getCurrentLocation() async {
@@ -197,23 +211,27 @@ class _LocationSelectionScreenState extends State<LocationSelectionScreen> {
       String selectedCity = _findClosestCity(cityFromCoordinates);
       
       widget.onLocationSelected(selectedCity);
-      Navigator.of(context).pop();
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Location set to: $selectedCity'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      
+      if (mounted) {
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Location set to: $selectedCity'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
 
     } catch (e) {
       print('Error getting location: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Could not get your current location. Please select manually.'),
-          backgroundColor: Colors.orange,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not get your current location. Please select manually.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
     } finally {
       setState(() {
         _isLoadingLocation = false;
@@ -245,14 +263,15 @@ class _LocationSelectionScreenState extends State<LocationSelectionScreen> {
   }
 
   String _findClosestCity(String detectedCity) {
-    // Find the closest match from our city list
-    for (String city in _allCities) {
-      if (city.toLowerCase().contains(detectedCity.toLowerCase()) ||
-          detectedCity.toLowerCase().contains(city.toLowerCase())) {
-        return city;
+    // Find the closest match from our areas list
+    for (Map<String, dynamic> area in _areas) {
+      final areaName = area['name']?.toString() ?? area['area_name']?.toString() ?? '';
+      if (areaName.toLowerCase().contains(detectedCity.toLowerCase()) ||
+          detectedCity.toLowerCase().contains(areaName.toLowerCase())) {
+        return areaName;
       }
     }
-    return 'Delhi'; // Default fallback
+    return 'Chennai'; // Default fallback for Tamil Nadu
   }
 
   void _showLocationServiceDialog() {
@@ -272,7 +291,7 @@ class _LocationSelectionScreenState extends State<LocationSelectionScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: Text('OK', style: TextStyle(color: AppColors.primaryBlue)),
+              child: const Text('OK', style: TextStyle(color: AppColors.primaryBlue)),
             ),
           ],
         );
@@ -297,7 +316,7 @@ class _LocationSelectionScreenState extends State<LocationSelectionScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: Text('OK', style: TextStyle(color: AppColors.primaryBlue)),
+              child: const Text('OK', style: TextStyle(color: AppColors.primaryBlue)),
             ),
           ],
         );
@@ -328,222 +347,282 @@ class _LocationSelectionScreenState extends State<LocationSelectionScreen> {
       ),
       body: Column(
         children: [
-          // Search Bar
+          // Search Bar with Current Location Icon
           Padding(
             padding: const EdgeInsets.all(16.0),
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: TextField(
-                controller: _searchController,
-                style: const TextStyle(color: Colors.black87),
-                                  decoration: const InputDecoration(
-                    hintText: 'Search cities in Tamil Nadu',
-                    hintStyle: TextStyle(color: Colors.grey),
-                    prefixIcon: Icon(Icons.search, color: Colors.grey),
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  ),
-              ),
-            ),
-          ),
-
-          // Use Current Location
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: Container(
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: ListTile(
-                leading: _isLoadingLocation
-                    ? const SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryBlue),
-                        ),
-                      )
-                    : Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: AppColors.primaryBlue.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Icon(
-                          Icons.my_location,
-                          color: AppColors.primaryBlue,
-                          size: 20,
-                        ),
+            child: Row(
+              children: [
+                // Search Box
+                Expanded(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: TextField(
+                      controller: _searchController,
+                      style: const TextStyle(color: Colors.black87),
+                      decoration: const InputDecoration(
+                        hintText: 'Search areas',
+                        hintStyle: TextStyle(color: Colors.grey),
+                        prefixIcon: Icon(Icons.search, color: Colors.grey),
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       ),
-                title: Text(
-                  _isLoadingLocation ? 'Getting location...' : 'Use current location',
-                  style: const TextStyle(
-                    color: Colors.black87,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ),
-                trailing: const Icon(
-                  Icons.arrow_forward_ios,
-                  color: Colors.grey,
-                  size: 16,
+                
+                const SizedBox(width: 12),
+                
+                // Current Location Icon
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: _isLoadingLocation
+                      ? const Center(
+                          child: SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryBlue),
+                            ),
+                          ),
+                        )
+                      : IconButton(
+                          onPressed: _getCurrentLocation,
+                          icon: const Icon(
+                            Icons.my_location,
+                            color: AppColors.primaryBlue,
+                            size: 24,
+                          ),
+                          tooltip: 'Use current location',
+                        ),
                 ),
-                onTap: _isLoadingLocation ? null : _getCurrentLocation,
-              ),
+              ],
             ),
           ),
 
           const SizedBox(height: 24),
 
-                     // Popular Cities
-           if (!_isSearching) ...[
-             const Padding(
-               padding: EdgeInsets.symmetric(horizontal: 16.0),
-               child: Align(
-                 alignment: Alignment.centerLeft,
-                 child: Text(
-                   'Popular cities in Tamil Nadu',
-                   style: TextStyle(
-                     color: Colors.white,
-                     fontSize: 18,
-                     fontWeight: FontWeight.w600,
+                     // All Cities - Only show when searching
+           if (_isSearching) ...[
+             Expanded(
+               child: Container(
+                 decoration: const BoxDecoration(
+                   color: Colors.white,
+                   borderRadius: BorderRadius.only(
+                     topLeft: Radius.circular(20),
+                     topRight: Radius.circular(20),
                    ),
                  ),
-               ),
-             ),
-            const SizedBox(height: 16),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 16,
-                  childAspectRatio: 0.8,
-                ),
-                itemCount: _popularCities.length,
-                itemBuilder: (context, index) {
-                  final city = _popularCities[index];
-                  return GestureDetector(
-                    onTap: () {
-                      widget.onLocationSelected(city['name']);
-                      Navigator.of(context).pop();
-                    },
-                                         child: Container(
-                       decoration: BoxDecoration(
-                         color: Colors.white,
-                         borderRadius: BorderRadius.circular(12),
-                         border: Border.all(
-                           color: AppColors.primaryBlue.withOpacity(0.2),
-                           width: 1,
+                 child: Column(
+                   crossAxisAlignment: CrossAxisAlignment.start,
+                   children: [
+                     const Padding(
+                       padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 20.0),
+                       child: Text(
+                         'Available Areas',
+                         style: TextStyle(
+                           color: Colors.black87,
+                           fontSize: 18,
+                           fontWeight: FontWeight.w600,
                          ),
                        ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: city['iconColor'].withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Icon(
-                              city['icon'],
-                              color: city['iconColor'],
-                              size: 32,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                                                     Text(
-                             city['name'],
-                             style: const TextStyle(
-                               color: Colors.black87,
-                               fontSize: 14,
-                               fontWeight: FontWeight.w500,
-                             ),
-                             textAlign: TextAlign.center,
-                             maxLines: 2,
-                             overflow: TextOverflow.ellipsis,
-                           ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(height: 24),
-          ],
-
-                     // All Cities
-           Expanded(
-             child: Container(
-               decoration: const BoxDecoration(
-                 color: Colors.white,
-                 borderRadius: BorderRadius.only(
-                   topLeft: Radius.circular(20),
-                   topRight: Radius.circular(20),
+                     ),
+                     Expanded(
+                       child: _buildAreasList(),
+                     ),
+                   ],
                  ),
                ),
-               child: Column(
-                 crossAxisAlignment: CrossAxisAlignment.start,
-                 children: [
-                   const Padding(
-                     padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 20.0),
-                     child: Text(
-                       'All cities in Tamil Nadu',
-                       style: TextStyle(
-                         color: Colors.black87,
-                         fontSize: 18,
-                         fontWeight: FontWeight.w600,
+             ),
+           ] else ...[
+             // Empty space when not searching
+             Expanded(
+               child: Container(
+                 decoration: const BoxDecoration(
+                   color: Colors.white,
+                   borderRadius: BorderRadius.only(
+                     topLeft: Radius.circular(20),
+                     topRight: Radius.circular(20),
+                   ),
+                 ),
+                 child: const Center(
+                   child: Column(
+                     mainAxisAlignment: MainAxisAlignment.center,
+                     children: [
+                       Icon(
+                         Icons.search,
+                         size: 64,
+                         color: Colors.grey,
                        ),
-                     ),
+                       SizedBox(height: 16),
+                       Text(
+                         'Search for areas',
+                         style: TextStyle(
+                           fontSize: 18,
+                           fontWeight: FontWeight.w500,
+                           color: Colors.grey,
+                         ),
+                       ),
+                       SizedBox(height: 8),
+                       Text(
+                         'Type in the search bar above to find areas',
+                         style: TextStyle(
+                           fontSize: 14,
+                           color: Colors.grey,
+                         ),
+                       ),
+                     ],
                    ),
-                   Expanded(
-                     child: ListView.builder(
-                       itemCount: _filteredCities.length,
-                       itemBuilder: (context, index) {
-                         final city = _filteredCities[index];
-                         return Container(
-                           decoration: BoxDecoration(
-                             border: Border(
-                               bottom: BorderSide(
-                                 color: Colors.grey.withOpacity(0.3),
-                                 width: 0.5,
-                               ),
-                             ),
-                           ),
-                           child: ListTile(
-                             title: Text(
-                               city,
-                               style: const TextStyle(
-                                 color: Colors.black87,
-                                 fontSize: 16,
-                               ),
-                             ),
-                             onTap: () {
-                               widget.onLocationSelected(city);
-                               Navigator.of(context).pop();
-                             },
-                           ),
-                         );
-                       },
-                     ),
-                   ),
-                 ],
+                 ),
                ),
              ),
-           ),
+           ],
         ],
       ),
+    );
+  }
+
+  Widget _buildAreasList() {
+    if (_isLoadingAreas) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryBlue),
+            ),
+            SizedBox(height: 16),
+            Text(
+              'Loading areas...',
+              style: TextStyle(
+                color: Colors.grey,
+                fontSize: 16,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_errorMessage != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.error_outline,
+              size: 64,
+              color: Colors.red,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              _errorMessage!,
+              style: const TextStyle(
+                color: Colors.red,
+                fontSize: 16,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () {
+                if (_searchController.text.isEmpty) {
+                  _loadInitialAreas();
+                } else {
+                  _searchAreas(_searchController.text);
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primaryBlue,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_filteredAreas.isEmpty) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.location_off,
+              size: 64,
+              color: Colors.grey,
+            ),
+            SizedBox(height: 16),
+            Text(
+              'No areas found',
+              style: TextStyle(
+                color: Colors.grey,
+                fontSize: 18,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'Try searching with different keywords',
+              style: TextStyle(
+                color: Colors.grey,
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      itemCount: _filteredAreas.length,
+      itemBuilder: (context, index) {
+        final area = _filteredAreas[index];
+        final areaName = area['name']?.toString() ?? 
+                        'Unknown Area';
+        final areaState = area['city']['name']?.toString() ?? 
+                         '';
+        final displayText = areaName.isNotEmpty ? '$areaName, $areaState' : areaState
+        ;
+        
+        return Container(
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(
+                color: Colors.grey.withValues(alpha: 0.3),
+                width: 0.5,
+              ),
+            ),
+          ),
+          child: ListTile(
+            leading: const Icon(
+              Icons.location_on,
+              color: AppColors.primaryBlue,
+              size: 20,
+            ),
+            title: Text(
+              displayText,
+              style: const TextStyle(
+                color: Colors.black87,
+                fontSize: 16,
+              ),
+            ),
+            onTap: () {
+              widget.onLocationSelected(areaName);
+              Navigator.of(context).pop();
+            },
+          ),
+        );
+      },
     );
   }
 }

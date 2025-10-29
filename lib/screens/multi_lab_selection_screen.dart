@@ -478,7 +478,7 @@ class _MultiLabSelectionScreenState extends State<MultiLabSelectionScreen> {
             itemCount: services.length,
             itemBuilder: (context, index) {
               final service = services[index];
-              final serviceName = service['name']?.toString() ?? 'Unknown Service';
+              final serviceName = service['name']?.toString() ?? 'Service';
               final servicePrice = service['price']?.toString() ?? '0';
               
               return Container(

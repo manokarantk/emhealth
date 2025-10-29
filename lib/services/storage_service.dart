@@ -6,6 +6,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 class StorageService {
   static const String _introSeenKey = 'intro_seen';
   static const String _cartItemsKey = 'cart_items';
+  static const String _userLocationKey = 'user_location';
+  static const String _userProfileKey = 'user_profile';
   static const String _storageFileName = 'app_storage.json';
   
   // Try SharedPreferences first, fallback to file storage
@@ -130,6 +132,138 @@ class StorageService {
     try {
       await _writeToFile(_cartItemsKey, <String>[]);
       print('DEBUG: StorageService - Cleared cart in file storage');
+    } catch (e) {
+      print('DEBUG: StorageService - File storage clear failed: $e');
+    }
+  }
+
+  // Location storage methods
+  static Future<Map<String, dynamic>?> getUserLocation() async {
+    try {
+      // Try SharedPreferences first
+      final prefs = await SharedPreferences.getInstance();
+      final locationString = prefs.getString(_userLocationKey);
+      if (locationString != null) {
+        final locationData = json.decode(locationString) as Map<String, dynamic>;
+        print('DEBUG: StorageService - Using SharedPreferences, userLocation: $locationData');
+        return locationData;
+      }
+    } catch (e) {
+      print('DEBUG: StorageService - SharedPreferences failed: $e');
+    }
+    
+    // Fallback to file storage
+    try {
+      final locationData = await _readFromFile(_userLocationKey);
+      if (locationData is Map<String, dynamic>) {
+        print('DEBUG: StorageService - Using file storage, userLocation: $locationData');
+        return locationData;
+      }
+    } catch (e) {
+      print('DEBUG: StorageService - File storage failed: $e');
+    }
+    
+    return null; // Return null if no location data found
+  }
+
+  static Future<void> saveUserLocation(Map<String, dynamic> locationData) async {
+    try {
+      // Try SharedPreferences first
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_userLocationKey, json.encode(locationData));
+      print('DEBUG: StorageService - Saved userLocation in SharedPreferences: $locationData');
+    } catch (e) {
+      print('DEBUG: StorageService - SharedPreferences failed, trying file storage: $e');
+      // Fallback to file storage
+      try {
+        await _writeToFile(_userLocationKey, locationData);
+        print('DEBUG: StorageService - Saved userLocation in file storage: $locationData');
+      } catch (e) {
+        print('DEBUG: StorageService - File storage also failed: $e');
+      }
+    }
+  }
+
+  static Future<void> clearUserLocation() async {
+    try {
+      // Try SharedPreferences first
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_userLocationKey);
+      print('DEBUG: StorageService - Cleared userLocation in SharedPreferences');
+    } catch (e) {
+      print('DEBUG: StorageService - SharedPreferences failed, trying file storage: $e');
+    }
+    
+    // Also clear in file storage
+    try {
+      await _writeToFile(_userLocationKey, null);
+      print('DEBUG: StorageService - Cleared userLocation in file storage');
+    } catch (e) {
+      print('DEBUG: StorageService - File storage clear failed: $e');
+    }
+  }
+
+  // Profile storage methods
+  static Future<Map<String, dynamic>?> getUserProfile() async {
+    try {
+      // Try SharedPreferences first
+      final prefs = await SharedPreferences.getInstance();
+      final profileString = prefs.getString(_userProfileKey);
+      if (profileString != null) {
+        final profileData = json.decode(profileString) as Map<String, dynamic>;
+        print('DEBUG: StorageService - Using SharedPreferences, userProfile: $profileData');
+        return profileData;
+      }
+    } catch (e) {
+      print('DEBUG: StorageService - SharedPreferences failed: $e');
+    }
+    
+    // Fallback to file storage
+    try {
+      final profileData = await _readFromFile(_userProfileKey);
+      if (profileData is Map<String, dynamic>) {
+        print('DEBUG: StorageService - Using file storage, userProfile: $profileData');
+        return profileData;
+      }
+    } catch (e) {
+      print('DEBUG: StorageService - File storage failed: $e');
+    }
+    
+    return null; // Return null if no profile data found
+  }
+
+  static Future<void> saveUserProfile(Map<String, dynamic> profileData) async {
+    try {
+      // Try SharedPreferences first
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_userProfileKey, json.encode(profileData));
+      print('DEBUG: StorageService - Saved userProfile in SharedPreferences: $profileData');
+    } catch (e) {
+      print('DEBUG: StorageService - SharedPreferences failed, trying file storage: $e');
+      // Fallback to file storage
+      try {
+        await _writeToFile(_userProfileKey, profileData);
+        print('DEBUG: StorageService - Saved userProfile in file storage: $profileData');
+      } catch (e) {
+        print('DEBUG: StorageService - File storage also failed: $e');
+      }
+    }
+  }
+
+  static Future<void> clearUserProfile() async {
+    try {
+      // Try SharedPreferences first
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_userProfileKey);
+      print('DEBUG: StorageService - Cleared userProfile in SharedPreferences');
+    } catch (e) {
+      print('DEBUG: StorageService - SharedPreferences failed, trying file storage: $e');
+    }
+    
+    // Also clear in file storage
+    try {
+      await _writeToFile(_userProfileKey, null);
+      print('DEBUG: StorageService - Cleared userProfile in file storage');
     } catch (e) {
       print('DEBUG: StorageService - File storage clear failed: $e');
     }

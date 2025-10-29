@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../constants/colors.dart';
+import '../constants/api_config.dart';
 import '../services/api_service.dart';
 import '../services/storage_service.dart';
 import '../widgets/add_family_member_bottom_sheet.dart';
@@ -38,6 +39,7 @@ class _MultiLabCheckoutScreenState extends State<MultiLabCheckoutScreen> {
   bool useWalletBalance = false;
   double walletBalance = 0.0; // Will be loaded from API
   String? appliedCoupon;
+  Map<String, dynamic>? homeCollectionFeesData; // Store home collection fees from API
   String? couponCode;
   double couponDiscount = 0.0;
   String? couponError;
@@ -95,6 +97,7 @@ class _MultiLabCheckoutScreenState extends State<MultiLabCheckoutScreen> {
           print('👨‍👩‍👧‍👦 Family Member $i: ID=$id, Name=$name');
           print('📋 Full data: $member');
         }
+        print('🔄 Multi-lab: Family member names: ${_familyMembers.map((m) => m['name']?.toString() ?? '${m['first_name'] ?? ''} ${m['last_name'] ?? ''}'.trim()).toList()}');
       } else {
         setState(() {
           dependentsError = result['message'] ?? 'Failed to load family members';
@@ -203,6 +206,31 @@ class _MultiLabCheckoutScreenState extends State<MultiLabCheckoutScreen> {
 
   double get totalSavings => totalOriginalPrice - totalDiscountedPrice;
 
+  // Calculate total home collection fee from API data
+  double get totalHomeCollectionFee {
+    print('📍 Multi-lab checkout - totalHomeCollectionFee called');
+    print('📍 Multi-lab checkout - homeCollectionFeesData: $homeCollectionFeesData');
+    
+    if (homeCollectionFeesData == null || homeCollectionFeesData!['lab_fees'] == null) {
+      print('📍 Multi-lab checkout - No fees data available, using fallback fee');
+      // Return a fallback fee when API data is not available
+      return 100.0; // Default home collection fee
+    }
+    
+    double totalFee = 0.0;
+    final labFees = homeCollectionFeesData!['lab_fees'] as List;
+    print('📍 Multi-lab checkout - labFees: $labFees');
+    
+    for (final labFee in labFees) {
+      final fee = double.tryParse(labFee['collection_fee']?.toString() ?? '0') ?? 0.0;
+      totalFee += fee;
+      print('📍 Multi-lab checkout - Lab fee: $fee, total so far: $totalFee');
+    }
+    
+    print('📍 Multi-lab checkout - Final total fee: $totalFee');
+    return totalFee;
+  }
+
   // New getters for conditional pricing based on payment method
   bool get shouldApplyDiscount {
     return selectedPaymentMethod == 'Online Payment' || selectedPaymentMethod == 'Wallet';
@@ -218,8 +246,17 @@ class _MultiLabCheckoutScreenState extends State<MultiLabCheckoutScreen> {
 
   // Check if at least one lab has home collection selected
   bool get hasAnyHomeCollection {
+    print('📍 Multi-lab checkout - Checking hasAnyHomeCollection');
+    print('📍 Multi-lab checkout - widget.multiLabData: ${widget.multiLabData}');
+    print('📍 Multi-lab checkout - widget.multiLabData keys: ${widget.multiLabData.keys}');
+    
     final labHomeCollection = Map<String, bool>.from(widget.multiLabData['labHomeCollection'] ?? <String, bool>{});
-    return labHomeCollection.values.any((isHomeCollection) => isHomeCollection == true);
+    print('📍 Multi-lab checkout - labHomeCollection: $labHomeCollection');
+    print('📍 Multi-lab checkout - labHomeCollection values: ${labHomeCollection.values}');
+    
+    final result = labHomeCollection.values.any((isHomeCollection) => isHomeCollection == true);
+    print('📍 Multi-lab checkout - hasAnyHomeCollection result: $result');
+    return result;
   }
 
   // Helper method to get relationship name from dynamic data
@@ -326,15 +363,37 @@ class _MultiLabCheckoutScreenState extends State<MultiLabCheckoutScreen> {
 
   double get finalAmount {
     double amount = conditionalTotalPrice - couponDiscount;
-    if (useWalletBalance) {
-      amount = (amount - walletBalance).clamp(0.0, double.infinity);
+    print('📍 Multi-lab checkout - finalAmount calculation:');
+    print('📍 Multi-lab checkout - conditionalTotalPrice: $conditionalTotalPrice');
+    print('📍 Multi-lab checkout - couponDiscount: $couponDiscount');
+    print('📍 Multi-lab checkout - amount after coupon: $amount');
+    
+    // Add home collection fee if any lab has home collection selected AND address is chosen
+    if (hasAnyHomeCollection && selectedAddress != null) {
+      print('📍 Multi-lab checkout - Adding home collection fee: $totalHomeCollectionFee');
+      amount += totalHomeCollectionFee;
+      print('📍 Multi-lab checkout - amount after home collection fee: $amount');
     }
+    
+    if (useWalletBalance) {
+      print('📍 Multi-lab checkout - Using wallet balance: $walletBalance');
+      amount = (amount - walletBalance).clamp(0.0, double.infinity);
+      print('📍 Multi-lab checkout - amount after wallet: $amount');
+    }
+    
+    print('📍 Multi-lab checkout - Final amount: $amount');
     return amount;
   }
 
   // Check if wallet balance covers the full amount after coupon discount
   bool get walletCoversFullAmount {
-    final finalAmountBeforeWallet = conditionalTotalPrice - couponDiscount;
+    double finalAmountBeforeWallet = conditionalTotalPrice - couponDiscount;
+    
+    // Add home collection fee if any lab has home collection selected AND address is chosen
+    if (hasAnyHomeCollection && selectedAddress != null) {
+      finalAmountBeforeWallet += totalHomeCollectionFee;
+    }
+    
     return walletBalance >= finalAmountBeforeWallet;
   }
 
@@ -435,7 +494,7 @@ class _MultiLabCheckoutScreenState extends State<MultiLabCheckoutScreen> {
       print('❌ Validation failed: No address selected for home collection');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please select a delivery address for home collection'),
+          content: Text('Please choose a collection address for home collection'),
           backgroundColor: Colors.red,
         ),
       );
@@ -721,20 +780,76 @@ class _MultiLabCheckoutScreenState extends State<MultiLabCheckoutScreen> {
     return '$day $month $year ${displayHour.toString().padLeft(2, '0')}:$minute $period';
   }
 
-  DateTime _combineDateAndTime(DateTime date, String timeString) {
+  DateTime _combineDateAndTime(DateTime date, dynamic timeData) {
+    print('🕐 _combineDateAndTime called with date: $date, timeData: $timeData (type: ${timeData.runtimeType})');
+
+    if (timeData == null) {
+      print('❌ Time data is null, cannot combine with date');
+      return date;
+    }
+    
     try {
-      // Parse time string (assuming format like "09:00" or "14:30")
-      final timeParts = timeString.split(':');
-      if (timeParts.length >= 2) {
-        final hour = int.parse(timeParts[0]);
-        final minute = int.parse(timeParts[1]);
-        return DateTime(date.year, date.month, date.day, hour, minute);
+      int hour = 0;
+      int minute = 0;
+      
+      if (timeData is String) {
+        // Expecting format like "3PM - 4PM" or "2PM - 2:30PM"
+        // We'll extract the start time from the string
+        final parts = timeData.split('-');
+        if (parts.isNotEmpty) {
+          final startTimeStr = parts[0].trim();
+          
+          // Pattern: optionally a number+(:number)?+(AM/PM)
+          final regex = RegExp(
+            r'^(\d{1,2})(?::(\d{1,2}))?\s*(AM|PM)$',
+            caseSensitive: false,
+          );
+          final match = regex.firstMatch(startTimeStr);
+          if (match != null) {
+            hour = int.parse(match.group(1)!);
+            minute = match.group(2) != null ? int.parse(match.group(2)!) : 0;
+            String period = match.group(3)!.toUpperCase();
+            print('🕐 Parsed: hour=$hour, minute=$minute, period=$period from "$startTimeStr"');
+            if (period == 'PM' && hour != 12) {
+              hour += 12;
+            } else if (period == 'AM' && hour == 12) {
+              hour = 0;
+            }
+          } else {
+            print('❌ Could not parse time string: $startTimeStr');
+            return date;
+          }
+        } else {
+          print('❌ Invalid timeData format: $timeData');
+          return date;
+        }
+      } else if (timeData is DateTime) {
+        hour = timeData.hour;
+        minute = timeData.minute;
+        print('🕐 Extracted from DateTime: hour=$hour, minute=$minute');
+      } else if (timeData is Map) {
+        final hourValue = timeData['hour'];
+        final minuteValue = timeData['minute'];
+        print('🕐 Map values - hour: $hourValue, minute: $minuteValue');
+        if (hourValue != null && minuteValue != null) {
+          hour = int.tryParse(hourValue.toString()) ?? 0;
+          minute = int.tryParse(minuteValue.toString()) ?? 0;
+        } else {
+          print('❌ Missing hour or minute in Map: $timeData');
+          return date;
+        }
+      } else {
+        print('❌ Unsupported time data type: ${timeData.runtimeType}');
+        return date;
       }
+
+      final result = DateTime(date.year, date.month, date.day, hour, minute);
+      print('🕐 Final combined DateTime: $result');
+      return result;
     } catch (e) {
       print('❌ Error combining date and time: $e');
+      return date;
     }
-    // Fallback: return original date if time parsing fails
-    return date;
   }
 
   void _showSuccessPopup() {
@@ -1013,6 +1128,11 @@ class _MultiLabCheckoutScreenState extends State<MultiLabCheckoutScreen> {
     final labSelectedDate = widget.multiLabData['labSelectedDates']?[lab['id']?.toString()];
     final labSelectedTime = widget.multiLabData['labSelectedTimes']?[lab['id']?.toString()];
     
+    print('📅 Lab $index ($labName) - Date: $labSelectedDate (${labSelectedDate.runtimeType}), Time: $labSelectedTime (${labSelectedTime.runtimeType})');
+    print('📅 Full labSelectedDates: ${widget.multiLabData['labSelectedDates']}');
+    print('📅 Full labSelectedTimes: ${widget.multiLabData['labSelectedTimes']}');
+    print('📅 Lab ID: ${lab['id']?.toString()}');
+    
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1153,7 +1273,7 @@ class _MultiLabCheckoutScreenState extends State<MultiLabCheckoutScreen> {
   }
 
   Widget _buildServiceItem(Map<String, dynamic> service) {
-    final serviceName = service['testname']?.toString() ?? service['name']?.toString() ?? 'Unknown Service';
+          final serviceName = service['testname']?.toString() ?? service['name']?.toString() ?? 'Service';
     final originalPrice = double.tryParse(service['baseprice']?.toString() ?? '0') ?? 0.0;
     final discountedPrice = double.tryParse(service['discountedprice']?.toString() ?? '0') ?? 0.0;
     
@@ -1412,7 +1532,34 @@ class _MultiLabCheckoutScreenState extends State<MultiLabCheckoutScreen> {
                     onPressed: () {
                       AddFamilyMemberBottomSheet.show(
                         context: context,
-                        onMemberAdded: _loadDependents,
+                        onMemberAdded: (memberName) async {
+                          print('🔄 Multi-lab: AddFamilyMemberBottomSheet callback called with name: $memberName');
+                          if (memberName != null) {
+                            // Reload dependents first
+                            await _loadDependents();
+                            // Find the newly added family member and get its ID
+                            final newMember = _familyMembers.firstWhere(
+                              (member) {
+                                final memberNameFromList = member['name']?.toString() ?? 
+                                                          '${member['first_name'] ?? ''} ${member['last_name'] ?? ''}'.trim();
+                                return memberNameFromList == memberName;
+                              },
+                              orElse: () => {},
+                            );
+                            
+                            if (newMember.isNotEmpty) {
+                              final memberId = newMember['id']?.toString() ?? newMember['user_id']?.toString() ?? '';
+                              // Auto-select the newly added family member
+                              setState(() {
+                                selectedPatient = memberName;
+                                selectedPatientId = memberId;
+                              });
+                              print('🔄 Multi-lab: Selected patient set to: $selectedPatient with ID: $selectedPatientId');
+                            } else {
+                              print('❌ Multi-lab: Could not find newly added family member in list');
+                            }
+                          }
+                        },
                       );
                     },
                     icon: const Icon(Icons.add, size: 18),
@@ -1438,7 +1585,7 @@ class _MultiLabCheckoutScreenState extends State<MultiLabCheckoutScreen> {
   Widget _buildFamilyMemberCard(Map<String, dynamic> member) {
     final memberId = member['id']?.toString() ?? member['user_id']?.toString() ?? '';
     // Try different possible name fields from API
-    String memberName = 'Unknown Member';
+          String memberName = 'Member';
     if (member['name']?.toString().isNotEmpty == true) {
       memberName = member['name'].toString();
     } else if (member['first_name']?.toString().isNotEmpty == true) {
@@ -1594,6 +1741,24 @@ class _MultiLabCheckoutScreenState extends State<MultiLabCheckoutScreen> {
   }
 
     Widget _buildAddressSelection() {
+    print('📍 Multi-lab checkout - _buildAddressSelection called');
+    // Extract lab IDs from multiLabData
+    final List<String> labIds = [];
+    final labs = List<Map<String, dynamic>>.from(widget.multiLabData['labs'] ?? []);
+    print('📍 Multi-lab checkout - labs data: $labs');
+    print('📍 Multi-lab checkout - multiLabData keys: ${widget.multiLabData.keys}');
+    print('📍 Multi-lab checkout - multiLabData: ${widget.multiLabData}');
+    
+    for (final lab in labs) {
+      final labId = lab['id']?.toString();
+      print('📍 Multi-lab checkout - processing lab: $lab, labId: $labId');
+      if (labId != null && labId.isNotEmpty) {
+        labIds.add(labId);
+      }
+    }
+    print('📍 Multi-lab checkout - extracted lab IDs: $labIds');
+    print('📍 Multi-lab checkout - labIds length: ${labIds.length}');
+
     return AddressSelectionWidget(
       selectedAddressId: selectedAddress,
       onAddressSelected: (addressId) {
@@ -1602,6 +1767,27 @@ class _MultiLabCheckoutScreenState extends State<MultiLabCheckoutScreen> {
         });
       },
       showTitle: true,
+      labIds: labIds,
+      onValidationComplete: (isValid, feesData) {
+        print('📍 Multi-lab checkout - Address validation completed: $isValid');
+        print('📍 Multi-lab checkout - Home collection fees data: $feesData');
+        print('📍 Multi-lab checkout - hasAnyHomeCollection: $hasAnyHomeCollection');
+        print('📍 Multi-lab checkout - selectedAddress: $selectedAddress');
+        setState(() {
+          homeCollectionFeesData = feesData;
+        });
+        print('📍 Multi-lab checkout - homeCollectionFeesData updated: $homeCollectionFeesData');
+      },
+      onNewAddressAdded: (addressId) async {
+        print('🔄 Multi-lab: onNewAddressAdded called with addressId: $addressId');
+        if (addressId != null) {
+          // Auto-select the newly added address
+          setState(() {
+            selectedAddress = addressId;
+          });
+          print('🔄 Multi-lab: Selected address set to: $selectedAddress');
+        }
+      },
     );
   }
 
@@ -2408,6 +2594,13 @@ class _MultiLabCheckoutScreenState extends State<MultiLabCheckoutScreen> {
                     ),
                   ),
                 ),
+                // Home Collection Fee (only show when address is selected)
+                if (hasAnyHomeCollection && selectedAddress != null) ...[
+                  const SizedBox(height: 8),
+                  _buildPriceRow('Home Collection Fee', '₹${totalHomeCollectionFee.toStringAsFixed(0)}', 
+                      color: const Color(0xFFFF8C32), icon: Icons.home),
+                ],
+                
                 const SizedBox(height: 16),
                 
                 // Final amount with special styling

@@ -56,6 +56,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       if (result['success'] && mounted) {
         setState(() {
           appointmentData = result['data']['appointment'];
+          print('📍 appointmentData: $appointmentData');
           isLoading = false;
         });
       } else {
@@ -333,8 +334,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          _buildInfoRow('Appointment ID', appointment['appointment_id'] ?? 'N/A'),
-          _buildInfoRow('Appointment Alias', appointment['appointment_alias'] ?? 'N/A'),
+          _buildInfoRow('Appointment ID', appointment['appointment_alias'] ?? 'N/A'),
           _buildInfoRow('Date & Time', '${_formatAppointmentDate(appointment['appointment_datetime'])} at ${_formatAppointmentTime(appointment['appointment_datetime'])}'),
           _buildInfoRow('Status', appointment['status']['status_name'] ?? 'N/A'),
           if (appointment['notes'] != null && appointment['notes'].toString().isNotEmpty)
@@ -672,7 +672,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      item['test_name'] ?? item['package_name'] ?? 'Unknown',
+                      item['test_name'] ?? item['package_name'] ?? 'Test/Package',
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
@@ -706,14 +706,22 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(
-                    '₹${item['price'] ?? 0}',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.primaryBlue,
+                  // Quantity display
+                  if (item['quantity'] != null && item['quantity'] > 1) ...[
+                    Text(
+                      'Qty: ${item['quantity']}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
-                  ),
+                    const SizedBox(height: 2),
+                  ],
+                  
+                  // Price display with discount information
+                  _buildItemPricing(item),
+                  
                   const SizedBox(height: 4),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -722,7 +730,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
-                      item['status_name'] ?? 'Unknown',
+                      item['status_name'] ?? 'Pending',
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w600,
@@ -808,15 +816,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Organization Information',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.black87,
-            ),
-          ),
-          const SizedBox(height: 16),
+
           Row(
             children: [
               Container(
@@ -874,10 +874,16 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          _buildInfoRow('Phone', organization['phone'] ?? 'N/A'),
-          _buildInfoRow('Email', organization['email'] ?? 'N/A'),
-          if (organization['website'] != null)
-            _buildInfoRow('Website', organization['website']),
+          if (organization['address_details'] != null && organization['address_details']['address_line1'] != null && organization['address_details']['address_line1'].toString().isNotEmpty)
+            _buildInfoRow('Address', organization['address_details']['address_line1']),
+          if (organization['address_details'] != null && organization['address_details']['address_line2'] != null && organization['address_details']['address_line2'].toString().isNotEmpty)
+            _buildInfoRow('Address', organization['address_details']['address_line2']),
+          if (organization['address_details'] != null && organization['address_details']['city'] != null && organization['address_details']['city'].toString().isNotEmpty)
+            _buildInfoRow('City', organization['address_details']['city']),
+          if (organization['address_details'] != null && organization['address_details']['state'] != null && organization['address_details']['state'].toString().isNotEmpty)
+            _buildInfoRow('State', organization['address_details']['state']),
+          if (organization['address_details'] != null && organization['address_details']['pincode'] != null && organization['address_details']['pincode'].toString().isNotEmpty)
+            _buildInfoRow('Pincode', organization['address_details']['pincode']),
         ],
       ),
     );
@@ -932,6 +938,11 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           _buildPriceRow('Total Amount', '₹${payment['total_amount']}'),
           if (payment['discount_amount'] != null && payment['discount_amount'] > 0)
             _buildPriceRow('Discount', '-₹${payment['discount_amount']}', isDiscount: true),
+          
+          // Home Collection Fee
+          if (_isHomeCollection() && _getHomeCollectionFee() > 0)
+            _buildPriceRow('Home Collection Fee', '₹${_getHomeCollectionFee().toStringAsFixed(0)}'),
+          
           _buildPriceRow('Final Amount', '₹${payment['final_amount']}', isTotal: true),
           _buildPriceRow('Paid Amount', '₹${payment['paid_amount']}', isPaid: true),
         ],
@@ -1089,6 +1100,96 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     );
   }
 
+  // Helper method to check if appointment is for home collection
+  bool _isHomeCollection() {
+    if (appointmentData == null) return false;
+    final collection = appointmentData!['collection'];
+    return collection['is_home_collection'] ?? false;
+  }
+
+  // Helper method to get home collection fee
+  double _getHomeCollectionFee() {
+    if (appointmentData == null) return 0.0;
+    
+    
+    // Try to get fee from payment data first
+    final payment = appointmentData!['payment'];
+    print('📍 payment: $payment');
+    if (payment != null && payment['home_collection_fee'] != null) {
+      return double.tryParse(payment['home_collection_fee'].toString()) ?? 0.0;
+    }
+    
+    // Try to get fee from collection data
+    final collection = appointmentData!['collection'];
+    if (collection != null && collection['collection_fee'] != null) {
+      return double.tryParse(collection['collection_fee'].toString()) ?? 0.0;
+    }
+    
+
+    
+    // Default fallback fee
+    return 100.0;
+  }
+
+  Widget _buildItemPricing(Map<String, dynamic> item) {
+    final currentPrice = double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
+    final originalPrice = double.tryParse(item['original_price']?.toString() ?? item['base_price']?.toString() ?? '0') ?? 0.0;
+    final quantity = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
+    
+    // Calculate if there's a discount
+    final hasDiscount = originalPrice > 0 && originalPrice > currentPrice;
+    final savings = hasDiscount ? (originalPrice - currentPrice) * quantity : 0.0;
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        // Current price (main price)
+        Text(
+          '₹${(currentPrice * quantity).toStringAsFixed(0)}',
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: AppColors.primaryBlue,
+          ),
+        ),
+        
+        // Original price with strikethrough if there's a discount
+        if (hasDiscount) ...[
+          const SizedBox(height: 2),
+          Text(
+            '₹${(originalPrice * quantity).toStringAsFixed(0)}',
+            style: const TextStyle(
+              fontSize: 12,
+              color: Colors.grey,
+              decoration: TextDecoration.lineThrough,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+        
+        // Savings amount if there's a discount
+        if (hasDiscount && savings > 0) ...[
+          const SizedBox(height: 2),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.green.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              'Save ₹${savings.toStringAsFixed(0)}',
+              style: const TextStyle(
+                fontSize: 10,
+                color: Colors.green,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
   Widget _buildPriceRow(String label, String value, {bool isDiscount = false, bool isTotal = false, bool isPaid = false}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -1182,7 +1283,16 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     if (dateTimeString == null) return 'N/A';
     try {
       final dateTime = DateTime.parse(dateTimeString);
-      return '${dateTime.day.toString().padLeft(2, '0')}/${dateTime.month.toString().padLeft(2, '0')}/${dateTime.year}';
+      const months = [
+        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      ];
+      
+      final day = dateTime.day.toString().padLeft(2, '0');
+      final month = months[dateTime.month - 1];
+      final year = dateTime.year;
+      
+      return '$day $month $year';
     } catch (e) {
       return 'N/A';
     }

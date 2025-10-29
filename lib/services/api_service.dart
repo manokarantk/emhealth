@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import '../constants/api_config.dart';
 import '../utils/auth_utils.dart';
 import 'token_service.dart';
+import 'location_service.dart';
+import 'storage_service.dart';
 
 class ApiService {
   static final ApiService _instance = ApiService._internal();
@@ -58,6 +60,7 @@ class ApiService {
 
   // Request OTP API
   Future<Map<String, dynamic>> requestOtp(String phone) async {
+    print('DEBUG: Request OTP API: Phone number: $phone');
     try {
       final headers = await _headers;
       final response = await http.post(
@@ -69,7 +72,7 @@ class ApiService {
       );
 
       final responseData = jsonDecode(response.body);
-      
+      print('DEBUG: Request OTP API: Response data: ');
       if (response.statusCode == 200) {
         return {
           'success': true,
@@ -157,6 +160,98 @@ class ApiService {
         headers: headers,
       );
 
+      final result = _handleResponse(response, context);
+      
+      // If successful, save to local storage for offline access
+      if (result['success'] == true && result['data'] != null) {
+        await StorageService.saveUserProfile(result['data']);
+        print('✅ Profile data saved to local storage from getMobileProfile');
+      }
+
+      return result;
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Network error occurred',
+        'error': e.toString(),
+      };
+    }
+  }
+
+  // Update mobile profile API (PUT method)
+  Future<Map<String, dynamic>> updateMobileProfile({
+    required String name,
+    required String email,
+    required String dateOfBirth,
+    required String gender,
+    String? profileImage,
+    double? latitude,
+    double? longitude,
+    String? address,
+    BuildContext? context,
+  }) async {
+    try {
+      final headers = await _headers;
+      final requestBody = {
+        'name': name,
+        'email': email,
+        'dateofbirth': dateOfBirth,
+        'gender': gender.toLowerCase(),
+        if (profileImage != null && profileImage.isNotEmpty) 'profileimage': profileImage,
+        if (latitude != null && longitude != null) 'location': {
+          'latitude': latitude,
+          'longitude': longitude,
+          'address': address ?? 'Unknown Address',
+        },
+      };
+
+      final response = await http.put(
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.mobileProfile}'),
+        headers: headers,
+        body: jsonEncode(requestBody),
+      );
+
+      final result = _handleResponse(response, context);
+      
+      // If successful, save to local storage for offline access
+      if (result['success'] == true && result['data'] != null) {
+        await StorageService.saveUserProfile(result['data']);
+        print('✅ Profile data saved to local storage from updateMobileProfile');
+      }
+
+      return result;
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Network error occurred',
+        'error': e.toString(),
+      };
+    }
+  }
+
+  // Update profile API
+  Future<Map<String, dynamic>> updateProfile({
+    required String fullName,
+    required String email,
+    required String phone,
+    String? dateOfBirth,
+    String? gender,
+    BuildContext? context,
+  }) async {
+    try {
+      final headers = await _headers;
+      final response = await http.put(
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.updateProfile}'),
+        headers: headers,
+        body: jsonEncode({
+          'full_name': fullName,
+          'email': email,
+          'phone': phone,
+          if (dateOfBirth != null && dateOfBirth.isNotEmpty) 'date_of_birth': dateOfBirth,
+          if (gender != null && gender.isNotEmpty) 'gender': gender,
+        }),
+      );
+
       return _handleResponse(response, context);
     } catch (e) {
       return {
@@ -184,6 +279,56 @@ class ApiService {
 
       return _handleResponse(response, context);
     } catch (e) {
+      return {
+        'success': false,
+        'message': 'Network error occurred',
+        'error': e.toString(),
+      };
+    }
+  }
+
+  // Complete profile API
+  Future<Map<String, dynamic>> completeProfile({
+    required String name,
+    required String email,
+    required String dateOfBirth,
+    required String gender,
+    String? profileImage,
+    double? latitude,
+    double? longitude,
+    String? address,
+    BuildContext? context,
+  }) async {
+    try {
+      final headers = await _headers;
+      
+      final requestBody = {
+        'name': name,
+        'email': email,
+        'dateofbirth': dateOfBirth,
+        'gender': gender.toLowerCase(),
+        if (profileImage != null && profileImage.isNotEmpty) 'profileimage': profileImage,
+        if (latitude != null && longitude != null) 'location': {
+          'latitude': latitude,
+          'longitude': longitude,
+          'address': address ?? 'Unknown Address',
+        },
+      };
+
+      print('🔄 Complete Profile API: Request body: ${jsonEncode(requestBody)}');
+
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.completeProfile}'),
+        headers: headers,
+        body: jsonEncode(requestBody),
+      );
+
+      print('🔄 Complete Profile API: Response status: ${response.statusCode}');
+      print('🔄 Complete Profile API: Response body: ${response.body}');
+
+      return _handleResponse(response, context);
+    } catch (e) {
+      print('❌ Error completing profile: $e');
       return {
         'success': false,
         'message': 'Network error occurred',
@@ -370,14 +515,30 @@ class ApiService {
   Future<Map<String, dynamic>> getMobileWallet({
     int page = 1,
     int limit = 10,
+    String? type,
   }) async {
     try {
       print('🔄 API Service: Making mobile wallet API call to ${ApiConfig.baseUrl}${ApiConfig.mobileWallet}');
-      print('🔄 API Service: Request parameters: page=$page, limit=$limit');
+      print('🔄 API Service: Request parameters: page=$page, limit=$limit, type=$type');
 
       final headers = await _headers;
+      
+      // Build query parameters
+      final queryParams = <String, String>{
+        'page': page.toString(),
+        'limit': limit.toString(),
+      };
+      
+      if (type != null && type.isNotEmpty) {
+        queryParams['type'] = type;
+      }
+      
+      final uri = Uri.parse('${ApiConfig.baseUrl}${ApiConfig.mobileWallet}').replace(
+        queryParameters: queryParams,
+      );
+      
       final response = await http.get(
-        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.mobileWallet}?page=$page&limit=$limit'),
+        uri,
         headers: headers,
       ).timeout(
         const Duration(seconds: 10),
@@ -918,13 +1079,80 @@ class ApiService {
         'package_ids': packageIds,
       };
       
-      // Add location data if provided
-      if (latitude != null && longitude != null) {
+      // Get stored location coordinates if not provided
+      if (latitude == null || longitude == null) {
+        final locationService = LocationService();
+        final storedCoordinates = await locationService.getStoredCoordinates();
+        
+        if (storedCoordinates != null) {
+          requestBody['latitude'] = storedCoordinates['latitude'];
+          requestBody['longitude'] = storedCoordinates['longitude'];
+          print('📍 API: Using stored location data - Lat: ${storedCoordinates['latitude']}, Long: ${storedCoordinates['longitude']}');
+        } else {
+          print('📍 API: No stored location data available');
+        }
+      } else {
+        // Use provided location data
         requestBody['latitude'] = latitude;
         requestBody['longitude'] = longitude;
-        print('📍 API: Including location data - Lat: $latitude, Long: $longitude');
+        print('📍 API: Using provided location data - Lat: $latitude, Long: $longitude');
+      }
+      
+      print('📍 API: Request body for organizations/providers: ${jsonEncode(requestBody)}');
+      
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.organizationsProviders}'),
+        headers: headers,
+        body: jsonEncode(requestBody),
+      );
+
+      final responseData = jsonDecode(response.body);
+      
+      if (response.statusCode == 200) {
+        return {
+          'success': true,
+          'data': responseData['data'],
+          'message': responseData['message'],
+        };
       } else {
-        print('📍 API: No location data provided');
+        return {
+          'success': false,
+          'message': responseData['message'] ?? 'Failed to get organizations/providers',
+          'error': responseData['error'] ?? 'Unknown error',
+        };
+      }
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Network error occurred',
+        'error': e.toString(),
+      };
+    }
+  }
+
+  // Get organizations/providers API with stored location (simplified version)
+  Future<Map<String, dynamic>> getOrganizationsProvidersWithStoredLocation({
+    required List<String> testIds,
+    required List<String> packageIds,
+  }) async {
+    try {
+      final headers = await _headers;
+      
+      final Map<String, dynamic> requestBody = {
+        'test_ids': testIds,
+        'package_ids': packageIds,
+      };
+      
+      // Get stored location coordinates
+      final locationService = LocationService();
+      final storedCoordinates = await locationService.getStoredCoordinates();
+      
+      if (storedCoordinates != null) {
+        requestBody['latitude'] = storedCoordinates['latitude'];
+        requestBody['longitude'] = storedCoordinates['longitude'];
+        print('📍 API: Using stored location data - Lat: ${storedCoordinates['latitude']}, Long: ${storedCoordinates['longitude']}');
+      } else {
+        print('📍 API: No stored location data available');
       }
       
       print('📍 API: Request body for organizations/providers: ${jsonEncode(requestBody)}');
@@ -1374,11 +1602,22 @@ class ApiService {
   // Get Dependents API
   Future<Map<String, dynamic>> getDependents(BuildContext? context) async {
     try {
+      print('🔄 API Service: Making getDependents API call to ${ApiConfig.baseUrl}${ApiConfig.dependents}');
+      
       final headers = await _headers;
       final response = await http.get(
         Uri.parse('${ApiConfig.baseUrl}${ApiConfig.dependents}'),
         headers: headers,
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          print('🔄 API Service: Request timeout for getDependents API');
+          throw Exception('Request timeout');
+        },
       );
+
+      print('🔄 API Service: getDependents Response status code: ${response.statusCode}');
+      print('🔄 API Service: getDependents Response body: ${response.body}');
 
       final responseData = jsonDecode(response.body);
       
@@ -1398,6 +1637,7 @@ class ApiService {
         };
       }
     } catch (e) {
+      print('❌ Error in getDependents API: $e');
       return {
         'success': false,
         'message': 'Network error occurred',
@@ -1530,14 +1770,26 @@ class ApiService {
   // Get User Addresses API
   Future<Map<String, dynamic>> getUserAddresses(BuildContext? context) async {
     try {
+      print('🔄 API Service: Making getUserAddresses API call to ${ApiConfig.baseUrl}${ApiConfig.profileAddresses}');
+      
       final headers = await _headers;
       final response = await http.get(
         Uri.parse('${ApiConfig.baseUrl}${ApiConfig.profileAddresses}'),
         headers: headers,
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          print('🔄 API Service: Request timeout for getUserAddresses API');
+          throw Exception('Request timeout');
+        },
       );
+
+      print('🔄 API Service: getUserAddresses Response status code: ${response.statusCode}');
+      print('🔄 API Service: getUserAddresses Response body: ${response.body}');
 
       return _handleResponse(response, context);
     } catch (e) {
+      print('❌ Error in getUserAddresses API: $e');
       return {
         'success': false,
         'message': 'Network error occurred',
@@ -1592,6 +1844,46 @@ class ApiService {
       return {
         'success': false,
         'message': 'Network error occurred',
+        'error': e.toString(),
+      };
+    }
+  }
+
+  // Get Home Collection Fees for Labs API
+  Future<Map<String, dynamic>> getHomeCollectionFees({
+    required List<String> labIds,
+    required double pickupLat,
+    required double pickupLng,
+    BuildContext? context,
+  }) async {
+    try {
+      print('📍 Home Collection Fees API: Getting fees for labs: $labIds');
+      print('📍 Pickup Coordinates: lat=$pickupLat, lng=$pickupLng');
+      
+      final headers = await _headers;
+      final data = {
+        'lab_ids': labIds,
+        'pickup_lat': pickupLat,
+        'pickup_lng': pickupLng,
+      };
+
+      print('📍 Request body: $data');
+
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.homeCollectionFees}'),
+        headers: headers,
+        body: jsonEncode(data),
+      );
+
+      print('📍 Home Collection Fees API Response Status: ${response.statusCode}');
+      print('📍 Home Collection Fees API Response Body: ${response.body}');
+
+      return _handleResponse(response, context);
+    } catch (e) {
+      print('❌ Error getting home collection fees: $e');
+      return {
+        'success': false,
+        'message': 'Network error occurred while getting home collection fees',
         'error': e.toString(),
       };
     }
@@ -1899,22 +2191,20 @@ class ApiService {
   Future<Map<String, dynamic>> cancelAppointment({
     required String appointmentId,
     required String cancellationReason,
-    required bool refundToWallet,
     BuildContext? context,
   }) async {
     try {
       print('🔄 Cancelling appointment with ID: $appointmentId');
       print('🔄 Cancellation reason: $cancellationReason');
-      print('🔄 Refund to wallet: $refundToWallet');
       
       final headers = await _headers;
       final requestBody = {
+        'appointment_id': appointmentId,
         'cancellation_reason': cancellationReason,
-        'refund_to_wallet': refundToWallet,
       };
       
-      final response = await http.delete(
-        Uri.parse('${ApiConfig.baseUrl}/mobile/appointments/$appointmentId'),
+      final response = await http.put(
+        Uri.parse('${ApiConfig.baseUrl}/appointments'),
         headers: headers,
         body: json.encode(requestBody),
       );
@@ -1931,8 +2221,44 @@ class ApiService {
         'error': e.toString(),
       };
     }
-  }
+    }
 
+  // Reschedule Appointment API
+  Future<Map<String, dynamic>> rescheduleAppointment({
+    required String appointmentId,
+    required DateTime newDateTime,
+    BuildContext? context,
+  }) async {
+    try {
+      print('🔄 Rescheduling appointment with ID: $appointmentId');
+      print('🔄 New date time: $newDateTime');
+      
+      final headers = await _headers;
+      final requestBody = {
+        'appointment_id': appointmentId,
+        'new_appointment_datetime': newDateTime.toIso8601String(),
+      };
+      
+      final response = await http.put(
+        Uri.parse('${ApiConfig.baseUrl}/appointments/reschedule'),
+        headers: headers,
+        body: json.encode(requestBody),
+      );
+
+      print('📊 Reschedule appointment response status: ${response.statusCode}');
+      print('📊 Reschedule appointment response body: ${response.body}');
+      
+      return _handleResponse(response, context);
+    } catch (e) {
+      print('❌ Error rescheduling appointment: $e');
+      return {
+        'success': false,
+        'message': 'Network error occurred',
+        'error': e.toString(),
+      };
+    }
+  }
+  
   // Update FCM token API
   Future<Map<String, dynamic>> updateFCMToken(String token) async {
     try {
@@ -1950,6 +2276,286 @@ class ApiService {
       return {
         'success': false,
         'message': 'Network error occurred',
+        'error': e.toString(),
+      };
+    }
+  }
+
+  // Add Medical Record API
+  Future<Map<String, dynamic>> addMedicalRecord({
+    required String type,
+    required String title,
+    required String description,
+    required List<String> fileUrls,
+    String uploadedBy = 'user',
+    BuildContext? context,
+  }) async {
+    try {
+      print('📋 Adding medical record with data:');
+      print('  - Type: $type');
+      print('  - Title: $title');
+      print('  - Description: $description');
+      print('  - File URLs: $fileUrls');
+      print('  - Uploaded By: $uploadedBy');
+      
+      final headers = await _headers;
+      final requestBody = {
+        'type': type,
+        'title': title,
+        'description': description,
+        'file_urls': fileUrls,
+        'uploaded_by': uploadedBy,
+      };
+
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.medicalRecords}'),
+        headers: headers,
+        body: jsonEncode(requestBody),
+      );
+
+      print('📋 Medical Record API Response Status: ${response.statusCode}');
+      print('📋 Medical Record API Response Body: ${response.body}');
+
+      return _handleResponse(response, context);
+    } catch (e) {
+      print('❌ Error adding medical record: $e');
+      return {
+        'success': false,
+        'message': 'Network error occurred',
+        'error': e.toString(),
+      };
+    }
+  }
+
+  // Get Medical Records API
+  Future<Map<String, dynamic>> getMedicalRecords({
+    int page = 1,
+    int limit = 10,
+    String sortBy = 'created_at',
+    String sortOrder = 'DESC',
+    String? type,
+    String? search,
+    BuildContext? context,
+  }) async {
+    try {
+      print('📋 Getting medical records with parameters:');
+      print('  - Page: $page');
+      print('  - Limit: $limit');
+      print('  - Sort By: $sortBy');
+      print('  - Sort Order: $sortOrder');
+      print('  - Type: $type');
+      print('  - Search: $search');
+      
+      final headers = await _headers;
+      
+      // Build query parameters
+      final queryParams = <String, String>{
+        'page': page.toString(),
+        'limit': limit.toString(),
+        'sort_by': sortBy,
+        'sort_order': sortOrder,
+      };
+      
+      if (type != null) queryParams['type'] = type;
+      if (search != null && search.isNotEmpty) queryParams['search'] = search;
+
+      final uri = Uri.parse('${ApiConfig.baseUrl}${ApiConfig.medicalRecords}').replace(queryParameters: queryParams);
+      
+      print('📋 Medical Records API URL: $uri');
+      
+      final response = await http.get(
+        uri,
+        headers: headers,
+      );
+
+      print('📋 Medical Records API Response Status: ${response.statusCode}');
+      print('📋 Medical Records API Response Body: ${response.body}');
+
+      return _handleResponse(response, context);
+    } catch (e) {
+      print('❌ Error getting medical records: $e');
+      return {
+        'success': false,
+        'message': 'Network error occurred',
+        'error': e.toString(),
+      };
+    }
+  }
+
+  // Submit Enquiry API
+  Future<Map<String, dynamic>> submitInquiry({
+    required String fullName,
+    required String phoneNumber,
+    String? emailAddress,
+    String? remarks,
+    List<String>? imagePaths, // This will now contain Firebase GCS URLs
+    BuildContext? context,
+  }) async {
+    try {
+      print('📝 Submitting enquiry with data:');
+      print('  - Full Name: $fullName');
+      print('  - Phone Number: $phoneNumber');
+      print('  - Email Address: $emailAddress');
+      print('  - Remarks: $remarks');
+      print('  - Image Paths (Firebase URLs): $imagePaths');
+      if (imagePaths != null && imagePaths.isNotEmpty) {
+        print('  - Number of images: ${imagePaths.length}');
+        for (int i = 0; i < imagePaths.length; i++) {
+          print('    Image ${i + 1}: ${imagePaths[i]}');
+        }
+      }
+      
+      final headers = await _headers;
+      final requestBody = {
+        'full_name': fullName,
+        'phone_number': phoneNumber,
+        'email_address': emailAddress,
+        'remarks': remarks,
+        'image_paths': imagePaths ?? [], // Firebase GCS URLs
+      };
+
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.submitInquiry}'),
+        headers: headers,
+        body: jsonEncode(requestBody),
+      );
+
+      print('📝 Enquiry API Response Status: ${response.statusCode}');
+      print('📝 Enquiry API Response Body: ${response.body}');
+
+      return _handleResponse(response, context);
+    } catch (e) {
+      print('❌ Error submitting enquiry: $e');
+      return {
+        'success': false,
+        'message': 'Network error occurred',
+        'error': e.toString(),
+      };
+    }
+  }
+
+  // Update Medical Record API
+  Future<Map<String, dynamic>> updateMedicalRecord({
+    required String recordId,
+    required String title,
+    required String description,
+    List<String>? fileUrls,
+    BuildContext? context,
+  }) async {
+    try {
+      print('📝 Updating medical record with data:');
+      print('  - Record ID: $recordId');
+      print('  - Title: $title');
+      print('  - Description: $description');
+      print('  - File URLs: $fileUrls');
+      
+      final headers = await _headers;
+      final requestBody = {
+        'title': title,
+        'description': description,
+        'file_urls': fileUrls ?? [],
+      };
+
+      final response = await http.put(
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.updateMedicalRecord}$recordId'),
+        headers: headers,
+        body: jsonEncode(requestBody),
+      );
+
+      print('📝 Update Medical Record API Response Status: ${response.statusCode}');
+      print('📝 Update Medical Record API Response Body: ${response.body}');
+
+      return _handleResponse(response, context);
+    } catch (e) {
+      print('❌ Error updating medical record: $e');
+      return {
+        'success': false,
+        'message': 'Network error occurred',
+        'error': e.toString(),
+      };
+    }
+  }
+
+  // Delete Medical Record API
+  Future<Map<String, dynamic>> deleteMedicalRecord({
+    required String recordId,
+    BuildContext? context,
+  }) async {
+    try {
+      print('🗑️ Deleting medical record with ID: $recordId');
+      
+      final headers = await _headers;
+      final response = await http.delete(
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.deleteMedicalRecord}$recordId'),
+        headers: headers,
+      );
+
+      print('🗑️ Delete Medical Record API Response Status: ${response.statusCode}');
+      print('🗑️ Delete Medical Record API Response Body: ${response.body}');
+
+      return _handleResponse(response, context);
+    } catch (e) {
+      print('❌ Error deleting medical record: $e');
+      return {
+        'success': false,
+        'message': 'Network error occurred',
+        'error': e.toString(),
+      };
+    }
+  }
+
+  // Get Areas Search API
+  Future<Map<String, dynamic>> getAreasSearch({
+    String? search,
+    int page = 1,
+    int limit = 50,
+    BuildContext? context,
+  }) async {
+    try {
+      print('📍 Getting areas search with parameters:');
+      print('  - Search: $search');
+      print('  - Page: $page');
+      print('  - Limit: $limit');
+      
+      final headers = await _headers;
+      
+      // Build request body
+      final requestBody = <String, dynamic>{
+        'page': page,
+        'limit': limit,
+      };
+      
+      // Add search parameter if provided
+      if (search != null && search.isNotEmpty) {
+        requestBody['search'] = search;
+        print('🔍 Search parameter added to areas request body');
+      } else {
+        print('🔍 No search parameter provided for areas request');
+      }
+      
+      print('📍 Areas Search API Request Body: ${jsonEncode(requestBody)}');
+      
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.areasSearch}'),
+        headers: headers,
+        body: jsonEncode(requestBody),
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          print('📍 Areas Search API: Request timeout');
+          throw Exception('Request timeout');
+        },
+      );
+
+      print('📍 Areas Search API Response Status: ${response.statusCode}');
+      print('📍 Areas Search API Response Body: ${response.body}');
+
+      return _handleResponse(response, context);
+    } catch (e) {
+      print('❌ Error getting areas search: $e');
+      return {
+        'success': false,
+        'message': 'Network error occurred while searching areas',
         'error': e.toString(),
       };
     }
